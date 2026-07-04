@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,900&display=swap" rel="stylesheet">
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-import { getDatabase, ref, get, set, update, remove, onValue, push } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+import { getDatabase, ref as _ref, get, set, update, remove, onValue, push } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC_bnP7uXOgqsQ0EiBuoGaIR_CAJVm-lDc",
@@ -22,6 +22,17 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+
+// All reads/writes are transparently routed under this non-guessable path
+// segment — Firebase rules only grant access under it, so a bot scanning
+// for exposed databases at the root or at common path names (students,
+// users, etc.) gets denied. This is a deterrent against automated scanners,
+// not real auth — anyone reading this source file can see the segment too.
+const DB_GATE = 'esatTmuaGate7f2Kx9Lw';
+function ref(dbInstance, path) {
+  return _ref(dbInstance, path ? (DB_GATE + '/' + path) : DB_GATE);
+}
+
 window.firebaseDB = { ref, get, set, update, remove, onValue, push, db };
 </script>
 
