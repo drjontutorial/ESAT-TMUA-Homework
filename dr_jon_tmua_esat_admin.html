@@ -243,6 +243,7 @@ tbody tr:hover{background:#f8fafc}
         <div class="edit-warning hidden" id="editSubmissionWarning"></div>
         <div class="form-row">
           <div class="form-group"><label>Title</label><input type="text" id="setTitle" placeholder="e.g. TMUA Set 1"></div>
+          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">ESAT (27 questions)</option><option value="tmua">TMUA (20 questions)</option></select></div>
           <div class="form-group"><label>Total Questions</label><input type="number" id="setTotalQ" min="1" max="100" value="27" onchange="rebuildKeyGrid()"></div>
           <div class="form-group"><label>Options per Question</label>
             <select id="setOptionsCount" onchange="rebuildKeyGrid()">
@@ -481,6 +482,13 @@ function onPerfStudentSelected() {
     document.getElementById('studentDetailChart').innerHTML = '';
     document.getElementById('studentDetailTable').innerHTML = '';
   }
+}
+
+function updateQuestionCountFromPaperType() {
+  const paperType = document.getElementById('setPaperType').value;
+  const questionCount = paperType === 'tmua' ? 20 : 27;
+  document.getElementById('setTotalQ').value = questionCount;
+  rebuildKeyGrid();
 }
 
 function rebuildKeyGrid() {
