@@ -865,10 +865,28 @@ function showBreakdownFor(setId, code) {
   if(s.overtimeSubmittedAt) {
     html += buildBreakdownSection('Overtime Attempt', s.overtimeAnswers, set);
   }
-  html += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button><button class="btn btn-ghost" style="flex:1" onclick="openEditAnswersModal(\''+setId+'\',\''+code+'\')">✏️ Edit Answers</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
+  html += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button><button class="btn btn-ghost" style="flex:1" onclick="openEditAnswersModal(\''+setId+'\',\''+code+'\')">✏️ Edit Answers</button><button class="btn btn-danger" style="flex:1" onclick="deleteAttempt(\''+setId+'\',\''+code+'\')">🗑️ Delete Attempt</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
 
   document.getElementById('breakdownModalContent').innerHTML = html;
   document.getElementById('breakdownModal').classList.add('show');
+}
+
+// ---- Delete a student's entire attempt for a paper (wipes timed + overtime + log) ----
+async function deleteAttempt(setId, code) {
+  const set = homeworkSets[setId];
+  const name = studentName(code) || code;
+  if(!confirm('Delete ' + name + '\'s ENTIRE attempt on "' + (set?set.title:setId) + '"? This removes their timed answers, overtime answers, and activity log for this paper — they will be able to start it again from scratch as if they never attempted it. This cannot be undone.')) return;
+  const {ref,remove,db} = window.firebaseDB;
+  try {
+    await remove(ref(db,'submissions/'+setId+'/'+code));
+    alert('✅ Attempt deleted — ' + name + ' can now retake "' + (set?set.title:setId) + '".');
+    closeBreakdown();
+    if(setId === currentResultsSetId) loadResultsForSet();
+    const byStudentViewVisible = document.getElementById('perfByStudent').style.display !== 'none';
+    if(byStudentViewVisible && code === currentDetailCode) openStudentDetail(code);
+  } catch(err) {
+    alert('❌ Delete failed: ' + err);
+  }
 }
 
 // ---- Manual answer override (fixes for technical glitches) ----
@@ -1127,7 +1145,7 @@ function renderStudentsList() {
     const chips = approved.length
       ? approved.map(id => '<span class="pill pending" style="margin:2px">'+homeworkSets[id].title+'</span>').join(' ')
       : '<span style="color:var(--muted)">— none —</span>';
-    html += '<tr><td><strong>'+code+'</strong></td><td>'+(s.name||'')+'</td><td>'+chips+'</td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="openApprovedPapersModal(\''+code+'\')">📌 Papers</button> <button class="btn btn-primary" style="padding:6px 10px;font-size:11px" onclick="openStudentDetail(\''+code+'\')">📋 Details</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="editStudent(\''+code+'\')">Edit</button> <button class="btn btn-danger" style="padding:6px 10px;font-size:11px" onclick="deleteStudent(\''+code+'\')">Delete</button></td></tr>';
+    html += '<tr><td><strong>'+code+'</strong></td><td>'+(s.name||'')+'</td><td>'+chips+'</td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="openApprovedPapersModal(\''+code+'\')">📌 Papers</button> <button class="btn btn-primary" style="padding:6px 10px;font-size:11px" onclick="openStudentDetail(\''+code+'\')">📋 Details</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Change this student\'s name or password (not their approved papers — use 📌 Papers for that)" onclick="editStudent(\''+code+'\')">✏️ Edit Login</button> <button class="btn btn-danger" style="padding:6px 10px;font-size:11px" onclick="deleteStudent(\''+code+'\')">Delete</button></td></tr>';
   });
   html += '</tbody></table>';
   document.getElementById('studentsListContainer').innerHTML = html;
