@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dr Jon's TMUA/ESAT Homework</title>
+<title>Dr Jon's TMUA & ESAT Practice Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,900&display=swap" rel="stylesheet">
 <script type="module">
@@ -128,8 +128,9 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 /* ---- Exam chrome (mimics the real Pearson VUE ESAT interface) ---- */
 .exam-chrome{margin:0 -16px;position:sticky;top:0;z-index:95;box-shadow:0 2px 12px rgba(0,0,0,.08)}
 .exam-topbar{background:var(--brand);color:#fff;padding:13px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-.exam-topbar .exam-title{font-family:'DM Serif Display',serif;font-size:16px;line-height:1.2}
-.exam-qcounter{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;background:rgba(255,255,255,.16);padding:7px 13px;border-radius:50px;cursor:pointer;border:0;color:#fff;font-family:'DM Sans',sans-serif;white-space:nowrap}
+.exam-topbar .exam-title{font-family:'DM Serif Display',serif;font-size:16px;line-height:1.2;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center}
+.exam-topbar .exam-flag-btn{flex-shrink:0}
+.exam-qcounter{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;background:rgba(255,255,255,.16);padding:7px 13px;border-radius:50px;cursor:pointer;border:0;color:#fff;font-family:'DM Sans',sans-serif;white-space:nowrap;flex-shrink:0}
 .exam-subbar{background:#3151c9;padding:9px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .exam-flag-btn{background:rgba(255,255,255,.14);border:1.5px solid rgba(255,255,255,.4);color:#fff;padding:7px 13px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif}
 .exam-flag-btn.active{background:var(--gold);border-color:var(--gold)}
@@ -179,8 +180,8 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 <div class="app">
 <header>
   <div>
-    <h1>Dr Jon's TMUA/ESAT Homework</h1>
-    <p>Answer • Submit • Review</p>
+    <h1>Dr Jon's TMUA & ESAT Practice Portal</h1>
+    <p>Calm Under Pressure. Sharp Against Time.</p>
   </div>
 </header>
 
@@ -192,24 +193,6 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
   <input type="text" id="codeInput" class="code-input" maxlength="10" placeholder="Your code">
   <input type="password" id="pwdInput" class="code-input" placeholder="Your password">
   <button class="btn" onclick="loginStudent()">Log in</button>
-</div>
-
-<!-- TEST MODE (temporary — will be removed once real students start using this) -->
-<div class="card" id="testModeCard">
-  <h2>🧪 Test Mode</h2>
-  <p class="sub">A no-password way in, for testing only.</p>
-
-  <div style="background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:12px;padding:14px;margin-bottom:16px">
-    <div style="font-weight:800;font-size:13px;color:#065f46;margin-bottom:6px">⚡ Quickest option</div>
-    <p style="font-size:12.5px;color:#065f46;margin-bottom:10px">Try a built-in 5-question sample test right now — no Firebase setup needed, nothing gets saved anywhere.</p>
-    <button class="btn green" onclick="startLocalDemo()">▶ Start built-in sample test</button>
-  </div>
-
-  <p class="sub">Or preview any real homework set as if you were a student (bypasses which papers are actually approved for a code):</p>
-  <div class="msg" id="testModeMsg"></div>
-  <input type="text" id="testCodeInput" class="code-input" placeholder="Any test code, e.g. test1" value="test1">
-  <select id="testSetSelect" class="select-input"><option value="">-- loading sets... --</option></select>
-  <button class="btn secondary" onclick="enterTestMode()">Enter as test student</button>
 </div>
 
 <!-- STUDENT HOME (after login) -->
@@ -277,6 +260,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 <div class="hidden" id="quizScreen">
   <div class="exam-chrome">
     <div class="exam-topbar">
+      <button class="exam-flag-btn" onclick="quitExam()">✕ Quit</button>
       <div class="exam-title" id="examTitle">—</div>
       <button class="exam-qcounter" onclick="openNavigator()">📑 <span id="qCounterText">Q1 of 1</span></button>
     </div>
@@ -357,35 +341,8 @@ let currentMode = 'timed'; // 'timed' | 'overtime'
 let timerInterval = null;
 let remainingSeconds = 0;
 let timedFinalized = false;
-let isLocalDemo = false;
-let localDemoSub = null; // in-memory stand-in for a Firebase submission doc, demo mode only
-let isTestModeAllSets = false; // when true (Test Mode), show every homework set regardless of real approvals
 let currentQIndex = 0; // 0-based index of the question currently shown
 let flaggedQuestions = new Set(); // question numbers (1-based) flagged for review, per attempt
-
-const DEMO_SET = {
-  title: 'Sample Quick Test',
-  totalQuestions: 5,
-  optionsCount: 4,
-  timeLimitMinutes: 2,
-  paperUrl: 'https://example.com/sample-paper-placeholder',
-  answerKey: { 1:'A', 2:'B', 3:'C', 4:'D', 5:'A' }
-};
-
-function startLocalDemo() {
-  isLocalDemo = true;
-  studentCode = 'localdemo';
-  studentRecord = { name: 'Sample Student' };
-  currentSetId = 'local-demo';
-  currentSet = DEMO_SET;
-  localDemoSub = { startedAt: null, draftAnswers: {} };
-  document.getElementById('loginCard').classList.add('hidden');
-  document.getElementById('testModeCard').classList.add('hidden');
-  document.getElementById('startTitle').textContent = currentSet.title;
-  document.getElementById('startMeta').textContent = currentSet.totalQuestions + ' questions • ' + currentSet.timeLimitMinutes + ' minute time limit • Options A–' + optionLetter(currentSet.optionsCount) + ' • (demo — nothing is saved)';
-  showPaperReadiness();
-  document.getElementById('warningScreen').classList.remove('hidden');
-}
 
 function showMsg(id, text, cls) {
   const el = document.getElementById(id);
@@ -408,9 +365,7 @@ async function loginStudent() {
     }
     studentCode = code;
     studentRecord = snap.val();
-    isTestModeAllSets = false;
     document.getElementById('loginCard').classList.add('hidden');
-    document.getElementById('testModeCard').classList.add('hidden');
     enterStudentHome();
   } catch(e) {
     showMsg('loginMsg','Something went wrong — please try again','error');
@@ -790,8 +745,21 @@ function tickTimer() {
   if(remainingSeconds <= 0) {
     clearInterval(timerInterval);
     stopUnloadProtection();
-    finalizeTimed(timerDeadline);
+    forceSubmitDueToTimeout();
   }
+}
+
+// Time ran out while the student was actively on the exam screen. Freeze the
+// timed score at whatever was answered, then hard-stop the exam UI and kick
+// them to Results — same as if they'd pressed Submit themselves — rather
+// than letting them keep typing on the same screen with just a banner.
+// They must explicitly press "Continue to overtime attempt" to keep going.
+async function forceSubmitDueToTimeout() {
+  await finalizeTimed(timerDeadline);
+  const sub = isLocalDemo ? localDemoSub : (await window.firebaseDB.get(window.firebaseDB.ref(window.firebaseDB.db,'submissions/'+currentSetId+'/'+studentCode))).val();
+  document.getElementById('quizScreen').classList.add('hidden');
+  showResults(sub, false);
+  document.getElementById('continueOvertimeBtn').classList.remove('hidden');
 }
 
 function onVisibilityChange() {
@@ -875,6 +843,7 @@ function toggleFlag() {
 }
 
 function goNextQuestion() {
+  saveProgress();
   const total = currentSet.totalQuestions;
   if(currentQIndex < total - 1) {
     currentQIndex++;
@@ -882,6 +851,32 @@ function goNextQuestion() {
   } else {
     openSubmitConfirm();
   }
+}
+
+// Persists whatever's been answered so far under a mode-specific draft field
+// (draftAnswers for timed, overtimeDraftAnswers / reattemptDraftAnswers for
+// the others) — called on every "Next" and on Quit, so nothing is lost if
+// the student closes the tab mid-attempt.
+function saveProgress() {
+  const draftField = currentMode === 'timed' ? 'draftAnswers'
+    : currentMode === 'overtime' ? 'overtimeDraftAnswers'
+    : 'reattemptDraftAnswers';
+  if(isLocalDemo) {
+    if(localDemoSub) localDemoSub[draftField] = currentAnswers;
+    return;
+  }
+  const {ref,update,db} = window.firebaseDB;
+  update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { [draftField]: currentAnswers }).catch(()=>{});
+}
+
+function quitExam() {
+  const message = currentMode === 'timed'
+    ? '⚠️ Your timed attempt keeps running even after you leave — the clock does not pause. Your answers so far have just been saved, so you can safely come back later and resume before time runs out.\n\nQuit for now?'
+    : '🔔 Reminder: your answers so far have just been saved, but make sure you\'re happy with them before leaving — this attempt is untimed and there\'s no rush.\n\nQuit for now?';
+  if(!confirm(message)) return;
+  saveProgress();
+  logEvent('quit', { mode: currentMode });
+  backToMyPaper();
 }
 
 function goPrevQuestion() {
