@@ -880,12 +880,8 @@ async function finalizeTimed(finalizedAt) {
   stopUnloadProtection();
   const { score, total, pct } = computeScore(currentAnswers);
   const fields = { timedAnswers: currentAnswers, timedSubmittedAt: finalizedAt, timedScore: score, timedTotal: total, timedPercentage: pct };
-  if(isLocalDemo) {
-    localDemoSub = Object.assign(localDemoSub || {}, fields);
-  } else {
-    const {ref,update,db} = window.firebaseDB;
-    await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
-  }
+  const {ref,update,db} = window.firebaseDB;
+  await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
   document.getElementById('timerBox').classList.add('hidden');
   document.getElementById('timesUpBanner').classList.remove('hidden');
   currentMode = 'overtime';
@@ -922,7 +918,7 @@ async function confirmSubmit() {
 async function doSubmit() {
   if(currentMode === 'timed' && !timedFinalized) {
     await finalizeTimed(Date.now());
-    const sub = isLocalDemo ? localDemoSub : (await window.firebaseDB.get(window.firebaseDB.ref(window.firebaseDB.db,'submissions/'+currentSetId+'/'+studentCode))).val();
+    const sub = (await window.firebaseDB.get(window.firebaseDB.ref(window.firebaseDB.db,'submissions/'+currentSetId+'/'+studentCode))).val();
     showResults(sub, false);
     document.getElementById('quizScreen').classList.add('hidden');
     document.getElementById('continueOvertimeBtn').classList.remove('hidden');
@@ -931,15 +927,9 @@ async function doSubmit() {
   if(currentMode === 'reattempt') {
     const { score, total, pct } = computeScore(currentAnswers);
     const fields = { reattemptAnswers: currentAnswers, reattemptSubmittedAt: Date.now(), reattemptScore: score, reattemptTotal: total, reattemptPercentage: pct };
-    let sub;
-    if(isLocalDemo) {
-      localDemoSub = Object.assign(localDemoSub || {}, fields);
-      sub = localDemoSub;
-    } else {
-      const {ref,update,get,db} = window.firebaseDB;
-      await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
-      sub = (await get(ref(db,'submissions/'+currentSetId+'/'+studentCode))).val();
-    }
+    const {ref,update,get,db} = window.firebaseDB;
+    await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+    const sub = (await get(ref(db,'submissions/'+currentSetId+'/'+studentCode))).val();
     document.getElementById('quizScreen').classList.add('hidden');
     document.getElementById('reattemptBanner').classList.add('hidden');
     showResults(sub, !!sub.overtimeSubmittedAt);
@@ -949,15 +939,9 @@ async function doSubmit() {
   // overtime submit
   const { score, total, pct } = computeScore(currentAnswers);
   const fields = { overtimeAnswers: currentAnswers, overtimeSubmittedAt: Date.now(), overtimeScore: score, overtimeTotal: total, overtimePercentage: pct };
-  let sub;
-  if(isLocalDemo) {
-    localDemoSub = Object.assign(localDemoSub || {}, fields);
-    sub = localDemoSub;
-  } else {
-    const {ref,update,get,db} = window.firebaseDB;
-    await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
-    sub = (await get(ref(db,'submissions/'+currentSetId+'/'+studentCode))).val();
-  }
+  const {ref,update,get,db} = window.firebaseDB;
+  await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+  const sub = (await get(ref(db,'submissions/'+currentSetId+'/'+studentCode))).val();
   document.getElementById('quizScreen').classList.add('hidden');
   showResults(sub, true);
   document.getElementById('continueOvertimeBtn').classList.add('hidden');
@@ -1025,9 +1009,6 @@ function buildBreakdown(answers, set) {
   }
   return html;
 }
-
-loadSetsForTestMode();
-
 </script>
 </body>
 </html>
