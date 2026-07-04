@@ -108,9 +108,26 @@ tbody tr:hover{background:#f8fafc}
 .results-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
 .results-toolbar input{flex:1;min-width:160px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif}
 .recalc-flag{color:var(--gold);font-weight:800;font-size:10px;margin-left:4px}
+
+.quick-stats-rail{display:none;position:fixed;top:100px;width:190px;left:calc(50% - 620px)}
+.quick-stats-rail .card{padding:16px}
+.quick-stats-rail h2{font-size:13px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.quick-stats-rail .qs-number{font-size:30px;font-weight:800;color:var(--brand);line-height:1}
+.quick-stats-rail .qs-label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-top:2px;margin-bottom:14px}
+@media (min-width:1560px){ .quick-stats-rail{display:block} }
 </style>
 </head>
 <body>
+
+<div class="quick-stats-rail" id="quickStatsRail">
+  <div class="card">
+    <h2>At a Glance</h2>
+    <div class="qs-number" id="qsPaperCount">—</div>
+    <div class="qs-label">Papers Created</div>
+    <div class="qs-number" id="qsStudentCount">—</div>
+    <div class="qs-label">Students</div>
+  </div>
+</div>
 
 <div class="container">
   <div class="login-section" id="loginSection" style="display:none">
@@ -340,6 +357,7 @@ function loadData() {
     populateResultsSetSelect();
     populateSetDropdowns();
     if(document.getElementById('homeTab').style.display !== 'none') renderHomepage();
+    document.getElementById('qsPaperCount').textContent = Object.keys(homeworkSets).length;
   });
   onValue(ref(db,'students'), snap => {
     students = snap.val() || {};
@@ -347,6 +365,7 @@ function loadData() {
     renderBulkChecklist();
     populatePerfStudentSelect();
     if(document.getElementById('homeTab').style.display !== 'none') renderHomepage();
+    document.getElementById('qsStudentCount').textContent = Object.keys(students).length;
   });
 }
 

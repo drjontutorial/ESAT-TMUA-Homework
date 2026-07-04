@@ -850,7 +850,7 @@ function renderCurrentQuestion() {
     const letter = optionLetter(i);
     const id = 'examopt_'+letter;
     const checked = currentAnswers[q] === letter ? 'checked' : '';
-    opts += '<label class="examopt-row" for="'+id+'"><input type="radio" name="examq" id="'+id+'" value="'+letter+'" '+checked+' onchange="setAnswer(\''+letter+'\')"><span class="examopt-radio"></span><span class="examopt-label">Option '+letter+'</span></label>';
+    opts += '<label class="examopt-row" for="'+id+'"><input type="radio" name="examq" id="'+id+'" value="'+letter+'" '+checked+' onchange="setAnswer(\''+letter+'\')"><span class="examopt-radio"></span><span class="examopt-label">'+letter+'</span></label>';
   }
   document.getElementById('examOptions').innerHTML = opts;
 
