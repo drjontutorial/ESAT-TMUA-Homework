@@ -578,6 +578,7 @@ function cancelImportPreview() {
 
 function saveSet() {
   const title = document.getElementById('setTitle').value.trim();
+  const paperType = document.getElementById('setPaperType').value;
   const total = parseInt(document.getElementById('setTotalQ').value);
   const optCount = parseInt(document.getElementById('setOptionsCount').value);
   const timeLimit = parseInt(document.getElementById('setTimeLimit').value);
@@ -601,7 +602,7 @@ function saveSet() {
   }
 
   const {ref,set,push,db} = window.firebaseDB;
-  const payload = { title, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+  const payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
 
   const setId = editingSetId || push(ref(db,'homeworkSets')).key;
   set(ref(db,'homeworkSets/'+setId), payload).then(() => {
@@ -616,6 +617,7 @@ function cancelEdit() {
   document.getElementById('cancelEditBtn').classList.add('hidden');
   document.getElementById('editSubmissionWarning').classList.add('hidden');
   document.getElementById('setTitle').value = '';
+  document.getElementById('setPaperType').value = 'esat';
   document.getElementById('setTotalQ').value = 27;
   document.getElementById('setOptionsCount').value = 8;
   document.getElementById('setTimeLimit').value = 60;
@@ -630,6 +632,7 @@ async function editSet(setId) {
   document.getElementById('setFormTitle').textContent = 'Editing: ' + s.title;
   document.getElementById('cancelEditBtn').classList.remove('hidden');
   document.getElementById('setTitle').value = s.title;
+  document.getElementById('setPaperType').value = s.paperType || 'esat';
   document.getElementById('setTotalQ').value = s.totalQuestions;
   document.getElementById('setOptionsCount').value = s.optionsCount;
   document.getElementById('setTimeLimit').value = s.timeLimitMinutes;
@@ -1294,7 +1297,24 @@ function renderStudentPerformanceChart(rows) {
     return;
   }
 
-  const dataPoints = submittedRows.map(({set, sub}) => ({
+  // Papers created before "Paper Type" existed default to ESAT.
+  const tmuaRows = submittedRows.filter(r => (r.set.paperType || 'esat') === 'tmua');
+  const esatRows = submittedRows.filter(r => (r.set.paperType || 'esat') !== 'tmua');
+
+  let html = '';
+  html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin-bottom:8px">TMUA</h3>';
+  html += buildSingleChartSvg(tmuaRows);
+  html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin:18px 0 8px">ESAT</h3>';
+  html += buildSingleChartSvg(esatRows);
+  container.innerHTML = html;
+}
+
+function buildSingleChartSvg(rowsForType) {
+  if(rowsForType.length === 0) {
+    return '<div class="empty" style="padding:16px">No completed papers of this type yet.</div>';
+  }
+
+  const dataPoints = rowsForType.map(({set, sub}) => ({
     label: set.title,
     score: computeScoreAgainst(sub.timedAnswers, set).pct
   }));
@@ -1328,7 +1348,7 @@ function renderStudentPerformanceChart(rows) {
     svg += '<text x="'+p.x.toFixed(1)+'" y="'+(height-padBottom+18)+'" font-size="10" fill="#64748b" text-anchor="middle">'+truncated+'</text>';
   });
   svg += '</svg>';
-  container.innerHTML = svg;
+  return svg;
 }
 
 // ---- Full backup / restore ----

@@ -289,6 +289,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 
   <div class="hidden timesup-banner" id="timesUpBanner">⏰ Time's up! Your answers have been recorded as your timed score. You can keep going — further changes count as overtime.</div>
   <div class="hidden overtime-banner" id="overtimeBanner">⏱️ Overtime mode — these answers are scored separately from your timed attempt.</div>
+  <div class="hidden overtime-banner" id="reattemptBanner">🔄 Practice reattempt — untimed, and doesn't change your saved timed/overtime score.</div>
 
   <div class="exam-content">
     <div class="exam-qnum" id="examQNum">Question 1</div>
@@ -339,6 +340,8 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
   </div>
   <div id="breakdownContainer"></div>
   <button class="btn secondary hidden" id="continueOvertimeBtn" onclick="goToOvertime()">Continue to overtime attempt</button>
+  <button class="btn green" style="margin-top:10px" id="reattemptBtn" onclick="beginReattempt()">🔄 Reattempt for Practice</button>
+  <p class="sub" style="text-align:center;margin-top:8px">Practice only — untimed, doesn't change your saved timed/overtime score.</p>
 </div>
 
 </div>
@@ -716,6 +719,7 @@ async function beginTimedTest() {
   remainingSeconds = currentSet.timeLimitMinutes * 60;
   logEvent('confirm_start', { paperOpened: !!paperTab, timeLimitMinutes: currentSet.timeLimitMinutes });
   document.getElementById('warningScreen').classList.add('hidden');
+  document.getElementById('reattemptBanner').classList.add('hidden');
   setupExam('reset');
   document.getElementById('quizScreen').classList.remove('hidden');
   document.getElementById('timerBox').classList.remove('hidden');
@@ -731,6 +735,7 @@ function beginOvertime() {
   logEvent('confirm_start_overtime');
   document.getElementById('overtimeBanner').classList.remove('hidden');
   document.getElementById('timesUpBanner').classList.add('hidden');
+  document.getElementById('reattemptBanner').classList.add('hidden');
   setupExam('keep');
   document.getElementById('quizScreen').classList.remove('hidden');
 }
@@ -743,6 +748,23 @@ function goToOvertime() {
   logEvent('confirm_start_overtime');
   document.getElementById('overtimeBanner').classList.remove('hidden');
   document.getElementById('timesUpBanner').classList.add('hidden');
+  document.getElementById('reattemptBanner').classList.add('hidden');
+  setupExam('reset');
+  document.getElementById('quizScreen').classList.remove('hidden');
+}
+
+function beginReattempt() {
+  // Untimed practice run — never touches timedAnswers/overtimeAnswers, just
+  // overwrites a separate reattempt* set of fields each time it's used.
+  document.getElementById('resultsScreen').classList.add('hidden');
+  currentAnswers = {};
+  currentMode = 'reattempt';
+  flaggedQuestions = new Set();
+  logEvent('confirm_start_reattempt');
+  document.getElementById('overtimeBanner').classList.add('hidden');
+  document.getElementById('timesUpBanner').classList.add('hidden');
+  document.getElementById('reattemptBanner').classList.remove('hidden');
+  document.getElementById('timerBox').classList.add('hidden');
   setupExam('reset');
   document.getElementById('quizScreen').classList.remove('hidden');
 }
@@ -973,6 +995,24 @@ async function doSubmit() {
     document.getElementById('continueOvertimeBtn').classList.remove('hidden');
     return;
   }
+  if(currentMode === 'reattempt') {
+    const { score, total, pct } = computeScore(currentAnswers);
+    const fields = { reattemptAnswers: currentAnswers, reattemptSubmittedAt: Date.now(), reattemptScore: score, reattemptTotal: total, reattemptPercentage: pct };
+    let sub;
+    if(isLocalDemo) {
+      localDemoSub = Object.assign(localDemoSub || {}, fields);
+      sub = localDemoSub;
+    } else {
+      const {ref,update,get,db} = window.firebaseDB;
+      await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+      sub = (await get(ref(db,'submissions/'+currentSetId+'/'+studentCode))).val();
+    }
+    document.getElementById('quizScreen').classList.add('hidden');
+    document.getElementById('reattemptBanner').classList.add('hidden');
+    showResults(sub, !!sub.overtimeSubmittedAt);
+    document.getElementById('continueOvertimeBtn').classList.add('hidden');
+    return;
+  }
   // overtime submit
   const { score, total, pct } = computeScore(currentAnswers);
   const fields = { overtimeAnswers: currentAnswers, overtimeSubmittedAt: Date.now(), overtimeScore: score, overtimeTotal: total, overtimePercentage: pct };
@@ -1007,6 +1047,10 @@ function showResults(sub, showOvertimeToo) {
     const overtimeLive = computeScoreAgainst(sub.overtimeAnswers, liveSet);
     summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + timedLive.pct + '%</div><div class="l">Timed</div></div><div class="score-box"><div class="n">' + overtimeLive.pct + '%</div><div class="l">Overtime</div></div></div>';
   }
+  if(sub.reattemptSubmittedAt) {
+    const reattemptLive = computeScoreAgainst(sub.reattemptAnswers, liveSet);
+    summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + reattemptLive.pct + '%</div><div class="l">Latest Reattempt (practice)</div></div></div>';
+  }
   document.getElementById('scoreSummary').innerHTML = summaryHtml;
 
   const noteEl = document.createElement('div');
@@ -1018,7 +1062,11 @@ function showResults(sub, showOvertimeToo) {
   if(sub.overtimeSubmittedAt) {
     breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Overtime attempt — question breakdown</h2>' + buildBreakdown(sub.overtimeAnswers, liveSet) + '</div>';
   }
+  if(sub.reattemptSubmittedAt) {
+    breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Latest reattempt (practice) — question breakdown</h2>' + buildBreakdown(sub.reattemptAnswers, liveSet) + '</div>';
+  }
   document.getElementById('breakdownContainer').innerHTML = breakdownHtml;
+  document.getElementById('reattemptBtn').classList.remove('hidden');
   document.getElementById('resultsScreen').classList.remove('hidden');
 }
 
