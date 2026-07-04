@@ -374,7 +374,7 @@ async function loginStudent() {
 
 function enterStudentHome() {
   document.getElementById('studentHomeCard').classList.remove('hidden');
-  document.getElementById('welcomeName').textContent = 'Welcome, ' + (studentRecord.name || studentCode) + (isTestModeAllSets ? ' 🧪' : '');
+  document.getElementById('welcomeName').textContent = 'Welcome, ' + (studentRecord.name || studentCode);
   switchHomeTab('papers');
   loadHomeworkSetsThenShowPaper();
 }
@@ -397,7 +397,6 @@ function loadHomeworkSetsThenShowPaper() {
 }
 
 function myApprovedSetIds() {
-  if(isTestModeAllSets) return Object.keys(homeworkSets);
   const approved = (studentRecord && studentRecord.approvedSetIds) || {};
   return Object.keys(approved).filter(id => approved[id] && homeworkSets[id]);
 }
@@ -515,58 +514,10 @@ function backToMyPaper() {
   stopUnloadProtection();
   document.getElementById('timerBox').classList.add('hidden');
   ['warningScreen','overtimeWarningScreen','quizScreen','resultsScreen'].forEach(id => document.getElementById(id).classList.add('hidden'));
-  if(isLocalDemo) {
-    isLocalDemo = false;
-    localDemoSub = null;
-    document.getElementById('loginCard').classList.remove('hidden');
-    document.getElementById('testModeCard').classList.remove('hidden');
-    return;
-  }
   document.getElementById('studentHomeCard').classList.remove('hidden');
   switchHomeTab('papers');
   renderMyPaperCard();
 }
-
-// ---- TEMPORARY TEST MODE (bypasses login) ----
-function loadSetsForTestMode() {
-  if(!window.firebaseDB) { setTimeout(loadSetsForTestMode,100); return; }
-  const {ref,onValue,db} = window.firebaseDB;
-  onValue(ref(db,'homeworkSets'), snap => {
-    homeworkSets = snap.val() || {};
-    const sel = document.getElementById('testSetSelect');
-    const cur = sel.value;
-    const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
-    if(entries.length === 0) {
-      sel.innerHTML = '<option value="">-- no homework sets yet, create one in Admin first --</option>';
-      return;
-    }
-    sel.innerHTML = '<option value="">-- choose a set to preview --</option>';
-    entries.forEach(([id,s]) => {
-      const opt = document.createElement('option');
-      opt.value = id; opt.textContent = s.title + ' (' + s.totalQuestions + 'q)';
-      sel.appendChild(opt);
-    });
-    if(cur) sel.value = cur;
-  });
-}
-
-function enterTestMode() {
-  const code = document.getElementById('testCodeInput').value.trim() || 'test1';
-  const setId = document.getElementById('testSetSelect').value;
-  if(!setId) {
-    const el = document.getElementById('testModeMsg');
-    el.textContent = 'Please choose a homework set first (create one in the Admin page if the list is empty)';
-    el.className = 'msg error';
-    return;
-  }
-  studentCode = code;
-  studentRecord = { name: 'Test Student (' + code + ')' };
-  isTestModeAllSets = true; // test mode shows every existing set, ignoring real approvals
-  document.getElementById('testModeCard').classList.add('hidden');
-  document.getElementById('loginCard').classList.add('hidden');
-  enterStudentHome();
-}
-
 
 async function openSet(setId) {
   currentSetId = setId;
@@ -623,9 +574,8 @@ function optionLetter(n) { return 'ABCDEFGH'[n-1]; }
 
 function logEvent(type, extra) {
   // Timestamped audit trail: when the student confirmed start, every answer
-  // change, and when they confirmed submit. Skipped in local demo mode since
-  // that mode promises nothing gets saved anywhere.
-  if(isLocalDemo || !window.firebaseDB) return;
+  // change, and when they confirmed submit.
+  if(!window.firebaseDB) return;
   const {ref,push,db} = window.firebaseDB;
   const entry = Object.assign({ type, ts: Date.now() }, extra || {});
   push(ref(db,'submissions/'+currentSetId+'/'+studentCode+'/log'), entry).catch(()=>{});
@@ -659,14 +609,10 @@ async function beginTimedTest() {
   }
 
   const startedAt = Date.now();
-  if(isLocalDemo) {
-    localDemoSub = { studentCode, startedAt, draftAnswers: {} };
-  } else {
-    const {ref,set,db} = window.firebaseDB;
-    await set(ref(db,'submissions/'+currentSetId+'/'+studentCode), {
-      studentCode, startedAt, draftAnswers: {}
-    });
-  }
+  const {ref,set,db} = window.firebaseDB;
+  await set(ref(db,'submissions/'+currentSetId+'/'+studentCode), {
+    studentCode, startedAt, draftAnswers: {}
+  });
   currentAnswers = {};
   currentMode = 'timed';
   timedFinalized = false;
@@ -756,7 +702,7 @@ function tickTimer() {
 // They must explicitly press "Continue to overtime attempt" to keep going.
 async function forceSubmitDueToTimeout() {
   await finalizeTimed(timerDeadline);
-  const sub = isLocalDemo ? localDemoSub : (await window.firebaseDB.get(window.firebaseDB.ref(window.firebaseDB.db,'submissions/'+currentSetId+'/'+studentCode))).val();
+  const sub = (await window.firebaseDB.get(window.firebaseDB.ref(window.firebaseDB.db,'submissions/'+currentSetId+'/'+studentCode))).val();
   document.getElementById('quizScreen').classList.add('hidden');
   showResults(sub, false);
   document.getElementById('continueOvertimeBtn').classList.remove('hidden');
@@ -861,10 +807,6 @@ function saveProgress() {
   const draftField = currentMode === 'timed' ? 'draftAnswers'
     : currentMode === 'overtime' ? 'overtimeDraftAnswers'
     : 'reattemptDraftAnswers';
-  if(isLocalDemo) {
-    if(localDemoSub) localDemoSub[draftField] = currentAnswers;
-    return;
-  }
   const {ref,update,db} = window.firebaseDB;
   update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { [draftField]: currentAnswers }).catch(()=>{});
 }
@@ -917,12 +859,8 @@ function setAnswer(letter) {
   currentAnswers[q] = letter;
   logEvent('answer', { question: q, answer: letter, mode: currentMode });
   if(currentMode === 'timed') {
-    if(isLocalDemo) {
-      if(localDemoSub) localDemoSub.draftAnswers = currentAnswers;
-    } else {
-      const {ref,update,db} = window.firebaseDB;
-      update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
-    }
+    const {ref,update,db} = window.firebaseDB;
+    update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
   }
 }
 
