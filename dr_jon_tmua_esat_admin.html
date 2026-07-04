@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dr Jon's TMUA/ESAT Homework — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,900&display=swap" rel="stylesheet">
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { getDatabase, ref, get, set, update, remove, onValue, push } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAS34ly4yLmiw8hBWN62wg5fi8IhzPwZqI",
+  authDomain: "drjonbooking.firebaseapp.com",
+  databaseURL: "https://drjonbooking-default-rtdb.firebaseio.com",
+  projectId: "drjonbooking",
+  storageBucket: "drjonbooking.firebasestorage.app",
+  messagingSenderId: "211688494004",
+  appId: "1:211688494004:web:cae320e93861f53a59d8e1"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+window.firebaseDB = { ref, get, set, update, remove, onValue, push, db };
+</script>
+
+<style>
+:root{
+  --brand:#1e40af;--brand-light:#e0e7ff;--bg:#f8fafc;--card:#fff;
+  --green:#0891b2;--green-bg:#e0f2fe;--green-dark:#164e63;
+  --line:#e2e8f0;--ink:#0f172a;--muted:#64748b;--warning:#dc2626;
+  --gold:#d97706;--gold-bg:#fef3c7;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--ink);padding:20px}
+.container{max-width:1200px;margin:0 auto}
+h1{font-family:'DM Serif Display',serif;font-size:28px;color:var(--brand);margin-bottom:20px}
+h2{font-family:'DM Serif Display',serif;font-size:20px;font-weight:400;margin-bottom:14px;color:var(--brand)}
+
+.login-section{background:var(--card);padding:30px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:400px;margin:60px auto}
+.login-section input{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:10px;font-size:16px;margin-bottom:12px;font-family:'DM Sans',sans-serif}
+.login-section button{width:100%;padding:14px;background:var(--brand);color:#fff;border:0;border-radius:10px;font-weight:700;cursor:pointer;font-size:16px;font-family:'DM Sans',sans-serif}
+
+.admin-panel{display:none}
+.header-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;background:var(--card);padding:16px 20px;border-radius:12px;border:1px solid var(--line);flex-wrap:wrap;gap:12px}
+.logout-btn{background:var(--warning);color:#fff;border:0;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700}
+
+.tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+.tab-btn{border:1.5px solid var(--line);background:#fff;padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:600;font-size:13px}
+.tab-btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:20px}
+
+.form-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.form-group{flex:1;min-width:160px}
+.form-group label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase}
+.form-group input,.form-group select{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;font-family:'DM Sans',sans-serif}
+
+.btn{padding:12px 20px;border:0;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;font-family:'DM Sans',sans-serif}
+.btn-primary{background:var(--brand);color:#fff}
+.btn-green{background:var(--green);color:#fff}
+.btn-danger{background:var(--warning);color:#fff}
+.btn-ghost{background:var(--line);color:var(--ink)}
+
+.key-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:10px;margin:14px 0}
+.key-cell{background:#f8fafc;border:1.5px solid var(--line);border-radius:10px;padding:8px;text-align:center}
+.key-cell .qn{font-size:11px;font-weight:800;color:var(--muted);margin-bottom:4px}
+.key-cell select{width:100%;border:1.5px solid var(--line);border-radius:6px;padding:6px;font-weight:800;text-align:center;font-family:'DM Sans',sans-serif}
+
+.set-list-item{display:flex;justify-content:space-between;align-items:center;padding:14px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:10px;flex-wrap:wrap;gap:10px}
+.set-list-item .t{font-weight:800;font-size:15px}
+.set-list-item .m{font-size:12px;color:var(--muted);margin-top:2px}
+.set-actions{display:flex;gap:8px}
+.set-actions button{padding:8px 14px;font-size:12px}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+.stat-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center}
+.stat-card .number{font-size:26px;font-weight:800;color:var(--brand);margin-bottom:4px}
+.stat-card .label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase}
+
+table{width:100%;border-collapse:collapse;background:var(--card);border-radius:14px;overflow:hidden}
+thead th{background:#f1f5f9;padding:10px 12px;text-align:left;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;border-bottom:1.5px solid var(--line)}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:#f8fafc}
+.pill{display:inline-block;padding:3px 10px;border-radius:50px;font-size:11px;font-weight:800}
+.pill.good{background:#d1fae5;color:#065f46}
+.pill.mid{background:var(--gold-bg);color:var(--gold)}
+.pill.bad{background:#fee2e2;color:#991b1b}
+.pill.pending{background:var(--brand-light);color:var(--brand)}
+
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;overflow-y:auto;padding:20px}
+.modal-overlay.show{display:flex}
+.modal{background:var(--card);border-radius:16px;padding:28px;max-width:640px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto}
+.modal h2{margin-bottom:16px}
+
+.qrow{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;margin-bottom:6px;font-size:13px}
+.qrow.correct{background:#f0fdf4;border-left:3px solid #6ee7b7}
+.qrow.incorrect{background:#fef2f2;border-left:3px solid #fca5a5}
+.qrow.notattempted{background:#fefce8;border-left:3px solid #eab308}
+
+.assign-row{display:flex;gap:8px;flex-wrap:wrap}
+.assign-row input,.assign-row select{flex:1;min-width:140px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif}
+
+.empty{text-align:center;padding:30px;color:var(--muted)}
+.edit-warning{background:var(--gold-bg);border:1.5px solid #fbbf24;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12.5px;color:#92400e;font-weight:700}
+.results-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.results-toolbar input{flex:1;min-width:160px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif}
+.recalc-flag{color:var(--gold);font-weight:800;font-size:10px;margin-left:4px}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="login-section" id="loginSection" style="display:none">
+    <h1 style="text-align:center;margin-bottom:24px">Admin Login</h1>
+    <input type="password" id="pwdInput" placeholder="Enter admin password">
+    <button onclick="adminLogin()">Login</button>
+  </div>
+
+  <div class="admin-panel" id="adminPanel" style="display:block">
+    <div class="header-bar">
+      <h1>TMUA/ESAT Homework — Admin</h1>
+      <button class="logout-btn" onclick="adminLogout()">Logout</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabBtnHome" onclick="switchTab('home')">🏠 Homepage</button>
+      <button class="tab-btn" id="tabBtnAssign" onclick="switchTab('assign')">📌 Assign Papers</button>
+      <button class="tab-btn" id="tabBtnPerformance" onclick="switchTab('performance')">📊 Performance</button>
+      <button class="tab-btn" id="tabBtnCreate" onclick="switchTab('create')">📝 Create Paper</button>
+    </div>
+
+    <!-- HOMEPAGE TAB -->
+    <div id="homeTab">
+      <div class="stats" id="homeStats"></div>
+      <div class="card">
+        <h2>🕐 Recent Activity</h2>
+        <div id="homeActivityFeed"></div>
+      </div>
+      <div class="card">
+        <h2>💾 Backup</h2>
+        <div id="homeBackupReminder"></div>
+        <p style="font-size:13px;color:var(--muted);margin:10px 0">Downloads everything — all homework sets, student accounts, and every submission (including answers and the activity timeline) — as one JSON file to your computer. Since this data isn't protected by database rules, keeping your own copy is good practice.</p>
+        <button class="btn btn-primary" onclick="downloadFullBackup()">⬇️ Download Backup to PC</button>
+        <div id="backupStatus" style="font-size:12px;color:var(--muted);margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <h2>⬆️ Restore from Backup</h2>
+        <div class="edit-warning">⚠️ Restoring <strong>overwrites</strong> whatever is currently in Firebase for any section present in the file (sets, students, and/or submissions). This can't be undone — only do this if you're sure, ideally right after taking a fresh backup first.</div>
+        <input type="file" id="restoreFileInput" accept=".json" style="margin-bottom:12px">
+        <button class="btn btn-danger" onclick="restoreFromBackup()">⬆️ Restore Selected File</button>
+        <div id="restoreStatus" style="font-size:12px;color:var(--muted);margin-top:10px"></div>
+      </div>
+    </div>
+
+    <!-- ASSIGN PAPERS TAB -->
+    <div id="assignTab" style="display:none">
+      <div class="card">
+        <h2 id="studentFormTitle">➕ Create Student Profile</h2>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Creates a new login for a student — they'll use this code + password to log in and see their approved papers.</p>
+        <div class="form-row">
+          <div class="form-group"><label>Code</label><input type="text" id="stuCode" placeholder="e.g. Ab12" maxlength="10"></div>
+          <div class="form-group"><label>Name</label><input type="text" id="stuName" placeholder="Student name"></div>
+          <div class="form-group"><label>Password</label><input type="text" id="stuPwd" placeholder="Password"></div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary" onclick="saveStudent()">✅ Create Profile</button>
+          <button class="btn btn-ghost hidden" id="cancelStudentEditBtn" onclick="cancelStudentEdit()">Cancel Edit</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📌 Approve Papers — Bulk</h2>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Pick a paper, tick students, and give them access in one go. This <strong>adds</strong> to what they already have — it won't remove any paper they can already see.</p>
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label>Paper to approve</label>
+            <select id="bulkAssignSet"><option value="">-- choose a paper --</option></select>
+          </div>
+        </div>
+        <div style="margin:10px 0"><button class="btn btn-ghost" onclick="toggleAllStudents(true)">Select All</button> <button class="btn btn-ghost" onclick="toggleAllStudents(false)">Clear</button></div>
+        <div id="bulkStudentChecklist" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:14px"></div>
+        <button class="btn btn-green" onclick="bulkAssignPaper()">✅ Approve for Selected Students</button>
+      </div>
+
+      <div class="card">
+        <h2>All Students</h2>
+        <div id="studentsListContainer"></div>
+      </div>
+    </div>
+
+    <!-- PERFORMANCE TAB (By Paper / By Student) -->
+    <div id="performanceTab" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="tab-btn active" id="perfSubBtnPaper" style="flex:1" onclick="switchPerformanceView('paper')">📄 By Paper</button>
+        <button class="tab-btn" id="perfSubBtnStudent" style="flex:1" onclick="switchPerformanceView('student')">👤 By Student</button>
+      </div>
+
+      <div id="perfByPaper">
+        <div class="card">
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label>Select Homework Set</label>
+              <select id="resultsSetSelect" onchange="loadResultsForSet()"><option value="">-- choose a set --</option></select>
+            </div>
+          </div>
+        </div>
+        <div id="resultsContent"></div>
+      </div>
+
+      <div id="perfByStudent" style="display:none">
+        <div class="card">
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label>Select Student</label>
+              <select id="perfStudentSelect" onchange="onPerfStudentSelected()"><option value="">-- choose a student --</option></select>
+            </div>
+          </div>
+        </div>
+        <div id="studentDetailContent">
+          <div class="card">
+            <h2 id="studentDetailTitle">—</h2>
+            <div id="studentDetailSummary"></div>
+          </div>
+          <div class="card">
+            <h2 style="font-size:16px">📈 Performance Over Time</h2>
+            <div id="studentDetailChart"></div>
+          </div>
+          <div class="card">
+            <h2 style="font-size:16px">📋 Paper History</h2>
+            <div id="studentDetailTable"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATE PAPER TAB -->
+    <div id="createTab" style="display:none">
+      <div class="card">
+        <h2 id="setFormTitle">📝 Create a new paper</h2>
+        <div class="edit-warning hidden" id="editSubmissionWarning"></div>
+        <div class="form-row">
+          <div class="form-group"><label>Title</label><input type="text" id="setTitle" placeholder="e.g. TMUA Set 1"></div>
+          <div class="form-group"><label>Total Questions</label><input type="number" id="setTotalQ" min="1" max="100" value="27" onchange="rebuildKeyGrid()"></div>
+          <div class="form-group"><label>Options per Question</label>
+            <select id="setOptionsCount" onchange="rebuildKeyGrid()">
+              <option value="4">A–D (4)</option><option value="5">A–E (5)</option><option value="6">A–F (6)</option><option value="7">A–G (7)</option><option value="8" selected>A–H (8)</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Time Limit (minutes)</label><input type="number" id="setTimeLimit" min="1" max="300" value="60"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label>📄 Paper Link (Google Drive / PDF URL)</label>
+            <input type="text" id="setPaperUrl" placeholder="https://drive.google.com/... — students only see this after they press Start">
+          </div>
+        </div>
+
+        <div style="background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:12px;padding:14px;margin-bottom:14px">
+          <div style="font-weight:800;font-size:13px;color:#065f46;margin-bottom:6px">📥 Import Answer Key (recommended)</div>
+          <p style="font-size:12px;color:#065f46;margin-bottom:10px">Get another Claude chat to generate the answers, then paste its reply below — one letter per question, spaces/newlines don't matter (e.g. "ABCDE EEDHG HGCBA...").</p>
+          <button class="btn btn-ghost" onclick="copyClaudePrompt()">🤖 Copy Prompt for Claude</button>
+          <textarea id="importAnswerText" placeholder="ABCDE&#10;EEDHG&#10;HGCBA&#10;BDAIH&#10;HGABB&#10;CD" style="width:100%;min-height:90px;margin-top:10px;padding:10px;border:1.5px solid var(--line);border-radius:10px;font-family:monospace;font-size:14px;font-weight:700;letter-spacing:1px"></textarea>
+          <button class="btn btn-primary" style="margin-top:10px" onclick="previewImportedAnswers()">👀 Preview Import</button>
+          <div id="importPreviewContainer"></div>
+        </div>
+
+        <h2 style="font-size:15px;margin-top:10px">Answer Key (manual entry / review)</h2>
+        <div class="key-grid" id="keyGrid"></div>
+        <div style="display:flex;gap:10px;margin-top:10px">
+          <button class="btn btn-primary" onclick="saveSet()">💾 Save Set</button>
+          <button class="btn btn-ghost hidden" id="cancelEditBtn" onclick="cancelEdit()">Cancel Edit</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Existing Sets</h2>
+        <div id="setsListContainer"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="breakdownModal">
+  <div class="modal" id="breakdownModalContent"></div>
+</div>
+
+<div class="modal-overlay" id="timelineModal">
+  <div class="modal" id="timelineModalContent"></div>
+</div>
+
+<div class="modal-overlay" id="approvedPapersModal">
+  <div class="modal" id="approvedPapersModalContent"></div>
+</div>
+
+<div class="modal-overlay" id="editAnswersModal">
+  <div class="modal" id="editAnswersModalContent"></div>
+</div>
+
+<script>
+const ADMIN_PWD = "drjon223";
+let homeworkSets = {};
+let allSubmissions = {};
+let students = {}; // { code: { name, password, approvedSetIds: { setId: true, ... } } }
+let editingSetId = null;
+let lastLoadedDetailSubs = {}; // { setId: submissionDoc } for the student currently open in Student Detail
+let currentDetailCode = null;
+let lastOutstanding = null; // { setId, codes, title } for the reminder-message generator
+let editAnswersMode = 'timed'; // 'timed' | 'overtime' — which attempt is being manually edited
+let editingStudentCode = null;
+let currentResultsSetId = null;
+
+function optionLetter(n) { return 'ABCDEFGH'[n-1]; }
+function studentName(code) { return (students[code] && students[code].name) || ''; }
+
+function adminLogin() {
+  const pwd = document.getElementById('pwdInput').value;
+  if(pwd !== ADMIN_PWD) { alert('Wrong password'); return; }
+  document.getElementById('loginSection').style.display = 'none';
+  document.getElementById('adminPanel').style.display = 'block';
+  loadData();
+  rebuildKeyGrid();
+}
+
+function adminLogout() {
+  document.getElementById('loginSection').style.display = 'block';
+  document.getElementById('adminPanel').style.display = 'none';
+  document.getElementById('pwdInput').value = '';
+}
+
+function loadData() {
+  if(!window.firebaseDB) { setTimeout(loadData,100); return; }
+  const {ref,onValue,db} = window.firebaseDB;
+  onValue(ref(db,'homeworkSets'), snap => {
+    homeworkSets = snap.val() || {};
+    renderSetsList();
+    populateResultsSetSelect();
+    populateSetDropdowns();
+    if(document.getElementById('homeTab').style.display !== 'none') renderHomepage();
+  });
+  onValue(ref(db,'students'), snap => {
+    students = snap.val() || {};
+    renderStudentsList();
+    renderBulkChecklist();
+    populatePerfStudentSelect();
+    if(document.getElementById('homeTab').style.display !== 'none') renderHomepage();
+  });
+}
+
+function switchTab(tab) {
+  document.getElementById('homeTab').style.display = tab==='home' ? 'block' : 'none';
+  document.getElementById('assignTab').style.display = tab==='assign' ? 'block' : 'none';
+  document.getElementById('performanceTab').style.display = tab==='performance' ? 'block' : 'none';
+  document.getElementById('createTab').style.display = tab==='create' ? 'block' : 'none';
+  document.getElementById('tabBtnHome').classList.toggle('active', tab==='home');
+  document.getElementById('tabBtnAssign').classList.toggle('active', tab==='assign');
+  document.getElementById('tabBtnPerformance').classList.toggle('active', tab==='performance');
+  document.getElementById('tabBtnCreate').classList.toggle('active', tab==='create');
+  if(tab === 'home') renderHomepage();
+}
+
+function switchPerformanceView(view) {
+  document.getElementById('perfByPaper').style.display = view==='paper' ? 'block' : 'none';
+  document.getElementById('perfByStudent').style.display = view==='student' ? 'block' : 'none';
+  document.getElementById('perfSubBtnPaper').classList.toggle('active', view==='paper');
+  document.getElementById('perfSubBtnStudent').classList.toggle('active', view==='student');
+}
+
+// ---- Homepage: overview stats, recent activity, backup reminder ----
+function renderBackupReminder() {
+  const el = document.getElementById('homeBackupReminder');
+  if(!el) return;
+  const last = localStorage.getItem('tmuaEsatLastBackupAt');
+  if(!last) {
+    el.innerHTML = '<div class="edit-warning">⚠️ No backup has been taken on this device yet. Consider downloading one below.</div>';
+    return;
+  }
+  const days = Math.floor((Date.now() - parseInt(last)) / 86400000);
+  if(days >= 7) {
+    el.innerHTML = '<div class="edit-warning">⚠️ Last backup was ' + days + ' day(s) ago — might be worth taking a fresh one.</div>';
+  } else {
+    el.innerHTML = '<div class="confirm-ready" style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600">✅ Last backup: ' + (days===0?'today':days+' day(s) ago') + '.</div>';
+  }
+}
+
+let homepageRenderToken = 0;
+
+async function renderHomepage() {
+  const myToken = ++homepageRenderToken;
+  const totalStudents = Object.keys(students).length;
+  const totalPapers = Object.keys(homeworkSets).length;
+
+  renderBackupReminder();
+
+  const feedEl = document.getElementById('homeActivityFeed');
+  feedEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted)">Loading…</p>';
+  // Render all three stat cards in one shot (with a placeholder for the async
+  // one) instead of appending with += — appending is what let concurrent
+  // calls (page load, homeworkSets update, students update) duplicate the
+  // "Submitted" card when their async fetches resolved out of order.
+  document.getElementById('homeStats').innerHTML =
+    '<div class="stat-card"><div class="number">'+totalStudents+'</div><div class="label">Students</div></div>' +
+    '<div class="stat-card"><div class="number">'+totalPapers+'</div><div class="label">Papers Created</div></div>' +
+    '<div class="stat-card"><div class="number">…</div><div class="label">Submitted (7 days)</div></div>';
+
+  if(!window.firebaseDB) return;
+  const {ref,get,db} = window.firebaseDB;
+  try {
+    const snap = await get(ref(db,'submissions'));
+    if(myToken !== homepageRenderToken) return; // a newer render started — drop this stale result
+    const allSubsTree = snap.val() || {};
+    const events = [];
+    Object.entries(allSubsTree).forEach(([setId, subsForSet]) => {
+      const set = homeworkSets[setId];
+      Object.entries(subsForSet || {}).forEach(([code, sub]) => {
+        if(sub.timedSubmittedAt) {
+          events.push({ ts: sub.timedSubmittedAt, code, setId, set, type: 'submitted' });
+        }
+      });
+    });
+    // newest paper created also shown in the feed
+    Object.entries(homeworkSets).forEach(([setId, set]) => {
+      if(set.createdAt) events.push({ ts: set.createdAt, setId, set, type: 'created' });
+    });
+    events.sort((a,b) => b.ts - a.ts);
+
+    const now = Date.now();
+    const weekAgo = now - 7*86400000;
+    const submittedThisWeek = events.filter(e => e.type==='submitted' && e.ts >= weekAgo).length;
+    document.getElementById('homeStats').innerHTML =
+      '<div class="stat-card"><div class="number">'+totalStudents+'</div><div class="label">Students</div></div>' +
+      '<div class="stat-card"><div class="number">'+totalPapers+'</div><div class="label">Papers Created</div></div>' +
+      '<div class="stat-card"><div class="number">'+submittedThisWeek+'</div><div class="label">Submitted (7 days)</div></div>';
+
+    if(events.length === 0) {
+      feedEl.innerHTML = '<div class="empty">No activity yet.</div>';
+      return;
+    }
+
+    let html = '';
+    events.slice(0,12).forEach(e => {
+      const time = new Date(e.ts).toLocaleString('en-GB');
+      if(e.type === 'submitted') {
+        const name = studentName(e.code) || e.code;
+        const title = e.set ? e.set.title : '(deleted paper)';
+        html += '<div class="qrow" style="background:#f8fafc;border-left:3px solid var(--green)"><span>📤 <strong>'+name+'</strong> submitted <em>'+title+'</em></span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
+      } else {
+        html += '<div class="qrow" style="background:#f8fafc;border-left:3px solid var(--brand)"><span>📝 New paper created: <strong>'+e.set.title+'</strong></span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
+      }
+    });
+    feedEl.innerHTML = html;
+  } catch(err) {
+    if(myToken !== homepageRenderToken) return;
+    feedEl.innerHTML = '<div class="empty">Could not load activity: ' + err + '</div>';
+  }
+}
+
+function populatePerfStudentSelect() {
+  const sel = document.getElementById('perfStudentSelect');
+  if(!sel) return;
+  const cur = sel.value;
+  const entries = Object.entries(students).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+  sel.innerHTML = '<option value="">-- choose a student --</option>';
+  entries.forEach(([code,s]) => {
+    const opt = document.createElement('option');
+    opt.value = code; opt.textContent = (s.name || code) + ' (' + code + ')';
+    sel.appendChild(opt);
+  });
+  if(cur) sel.value = cur;
+}
+
+function onPerfStudentSelected() {
+  const code = document.getElementById('perfStudentSelect').value;
+  if(code) {
+    openStudentDetail(code);
+  } else {
+    document.getElementById('studentDetailTitle').textContent = '—';
+    document.getElementById('studentDetailSummary').innerHTML = '<p style="color:var(--muted);font-size:13px">Pick a student above to see their history.</p>';
+    document.getElementById('studentDetailChart').innerHTML = '';
+    document.getElementById('studentDetailTable').innerHTML = '';
+  }
+}
+
+function rebuildKeyGrid() {
+  const total = parseInt(document.getElementById('setTotalQ').value) || 0;
+  const optCount = parseInt(document.getElementById('setOptionsCount').value) || 8;
+  let html = '';
+  for(let q=1; q<=total; q++) {
+    let opts = '<option value="">-</option>';
+    for(let i=1;i<=optCount;i++){ const l=optionLetter(i); opts += '<option value="'+l+'">'+l+'</option>'; }
+    html += '<div class="key-cell"><div class="qn">Q'+q+'</div><select id="key_q'+q+'">'+opts+'</select></div>';
+  }
+  document.getElementById('keyGrid').innerHTML = html;
+}
+
+// ---- Import answer key from another Claude chat ----
+let pendingImportAnswers = null;
+
+function copyClaudePrompt() {
+  const total = parseInt(document.getElementById('setTotalQ').value) || 27;
+  const optCount = parseInt(document.getElementById('setOptionsCount').value) || 8;
+  const maxLetter = optionLetter(optCount);
+  const prompt = 'Please give me the answer key for a ' + total + '-question multiple choice exam (TMUA/ESAT style), where each question has options A to ' + maxLetter + '.\n\nReply with ONLY the ' + total + ' answer letters in order from question 1 to ' + total + ' — no question numbers, no spaces needed, no explanation. You can format it in short rows if that\'s easier to read, e.g.:\n\nABCDE\nEEDHG\nHGCBA\n...\n\nJust the letters, nothing else.';
+  navigator.clipboard.writeText(prompt).then(() => {
+    alert('✅ Prompt copied! Paste it into another Claude chat, get the answers back, then paste that reply into the box below.');
+  }).catch(() => {
+    window.prompt('Copy this prompt manually:', prompt);
+  });
+}
+
+function previewImportedAnswers() {
+  const raw = document.getElementById('importAnswerText').value;
+  const letters = raw.toUpperCase().replace(/[^A-H]/g, '').split('');
+  const optCount = parseInt(document.getElementById('setOptionsCount').value) || 8;
+  const maxLetter = optionLetter(optCount);
+  const currentTotal = parseInt(document.getElementById('setTotalQ').value) || 0;
+  const container = document.getElementById('importPreviewContainer');
+
+  if(letters.length === 0) {
+    container.innerHTML = '<div class="edit-warning">⚠️ No valid answer letters found (A–H only).</div>';
+    pendingImportAnswers = null;
+    return;
+  }
+
+  let warnings = [];
+  if(letters.length !== currentTotal) {
+    warnings.push('You pasted <strong>' + letters.length + '</strong> answers, but "Total Questions" is currently set to <strong>' + currentTotal + '</strong>. Applying will update Total Questions to ' + letters.length + ' and rebuild the grid.');
+  }
+  const overLimitCount = letters.filter(l => (l.charCodeAt(0)-64) > optCount).length;
+  if(overLimitCount > 0) {
+    warnings.push(overLimitCount + ' answer(s) go beyond A–' + maxLetter + ' (current "Options per Question" setting) — you may want to increase it before applying.');
+  }
+
+  pendingImportAnswers = letters;
+
+  let rows = '';
+  letters.forEach((l,i) => {
+    const overLimit = (l.charCodeAt(0)-64) > optCount;
+    rows += '<div class="qrow ' + (overLimit?'incorrect':'correct') + '"><span>Q'+(i+1)+'</span><span><strong>'+l+'</strong>'+(overLimit?' ⚠️':'')+'</span></div>';
+  });
+
+  let html = '';
+  if(warnings.length) html += '<div class="edit-warning">⚠️ ' + warnings.join('<br>') + '</div>';
+  html += '<div style="max-height:280px;overflow-y:auto;margin:10px 0;background:#fff;border-radius:10px;padding:6px">' + rows + '</div>';
+  html += '<div style="display:flex;gap:10px"><button class="btn btn-green" style="flex:1" onclick="applyImportedAnswers()">✅ Apply to Answer Key</button><button class="btn btn-ghost" style="flex:1" onclick="cancelImportPreview()">Cancel</button></div>';
+  container.innerHTML = html;
+}
+
+function applyImportedAnswers() {
+  if(!pendingImportAnswers) return;
+  const total = pendingImportAnswers.length;
+  document.getElementById('setTotalQ').value = total;
+  rebuildKeyGrid();
+  pendingImportAnswers.forEach((l, i) => {
+    const el = document.getElementById('key_q'+(i+1));
+    if(el) el.value = l;
+  });
+  document.getElementById('importPreviewContainer').innerHTML = '<div class="confirm-ready" style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600">✅ Applied ' + total + ' answers to the Answer Key below. Double check it, then click "💾 Save Set".</div>';
+  document.getElementById('importAnswerText').value = '';
+  pendingImportAnswers = null;
+  document.getElementById('keyGrid').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function cancelImportPreview() {
+  pendingImportAnswers = null;
+  document.getElementById('importPreviewContainer').innerHTML = '';
+}
+
+function saveSet() {
+  const title = document.getElementById('setTitle').value.trim();
+  const total = parseInt(document.getElementById('setTotalQ').value);
+  const optCount = parseInt(document.getElementById('setOptionsCount').value);
+  const timeLimit = parseInt(document.getElementById('setTimeLimit').value);
+  const paperUrl = document.getElementById('setPaperUrl').value.trim();
+
+  if(!title) { alert('Please enter a title'); return; }
+  if(!total || total<1) { alert('Please enter a valid question count'); return; }
+  if(!paperUrl) {
+    if(!confirm('No paper link added — students won\'t have anything to open when they start. Save anyway?')) return;
+  }
+
+  const answerKey = {};
+  let missing = [];
+  for(let q=1; q<=total; q++) {
+    const val = document.getElementById('key_q'+q).value;
+    if(!val) missing.push(q);
+    answerKey[q] = val;
+  }
+  if(missing.length > 0) {
+    if(!confirm('Questions ' + missing.join(', ') + ' have no answer set. Save anyway?')) return;
+  }
+
+  const {ref,set,push,db} = window.firebaseDB;
+  const payload = { title, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+
+  const setId = editingSetId || push(ref(db,'homeworkSets')).key;
+  set(ref(db,'homeworkSets/'+setId), payload).then(() => {
+    alert('✅ Set saved: ' + title);
+    cancelEdit();
+  }).catch(err => alert('Error: ' + err));
+}
+
+function cancelEdit() {
+  editingSetId = null;
+  document.getElementById('setFormTitle').textContent = '📝 Create a new paper';
+  document.getElementById('cancelEditBtn').classList.add('hidden');
+  document.getElementById('editSubmissionWarning').classList.add('hidden');
+  document.getElementById('setTitle').value = '';
+  document.getElementById('setTotalQ').value = 27;
+  document.getElementById('setOptionsCount').value = 8;
+  document.getElementById('setTimeLimit').value = 60;
+  document.getElementById('setPaperUrl').value = '';
+  rebuildKeyGrid();
+}
+
+async function editSet(setId) {
+  const s = homeworkSets[setId];
+  if(!s) return;
+  editingSetId = setId;
+  document.getElementById('setFormTitle').textContent = 'Editing: ' + s.title;
+  document.getElementById('cancelEditBtn').classList.remove('hidden');
+  document.getElementById('setTitle').value = s.title;
+  document.getElementById('setTotalQ').value = s.totalQuestions;
+  document.getElementById('setOptionsCount').value = s.optionsCount;
+  document.getElementById('setTimeLimit').value = s.timeLimitMinutes;
+  document.getElementById('setPaperUrl').value = s.paperUrl || '';
+  rebuildKeyGrid();
+  for(let q=1; q<=s.totalQuestions; q++) {
+    if(s.answerKey && s.answerKey[q]) {
+      const el = document.getElementById('key_q'+q);
+      if(el) el.value = s.answerKey[q];
+    }
+  }
+
+  const warnEl = document.getElementById('editSubmissionWarning');
+  const {ref,get,db} = window.firebaseDB;
+  const snap = await get(ref(db,'submissions/'+setId));
+  const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+  if(count > 0) {
+    warnEl.textContent = '⚠️ ' + count + ' student(s) have already submitted this set. Changing "Total Questions" or "Options" can break their results display — fixing the Answer Key is safe, and scores will update automatically for everyone once you save (use "Recalculate Scores" in the Results tab to refresh the table immediately).';
+    warnEl.classList.remove('hidden');
+  } else {
+    warnEl.classList.add('hidden');
+  }
+
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function deleteSet(setId) {
+  const s = homeworkSets[setId];
+  if(!confirm('Delete "' + (s?s.title:setId) + '"? This does NOT delete existing student submissions.')) return;
+  const {ref,remove,db} = window.firebaseDB;
+  remove(ref(db,'homeworkSets/'+setId));
+}
+
+function renderSetsList() {
+  const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+  if(entries.length === 0) {
+    document.getElementById('setsListContainer').innerHTML = '<div class="empty">No sets created yet</div>';
+    return;
+  }
+  let html = '';
+  entries.forEach(([id, s]) => {
+    const paperStatus = s.paperUrl ? '<span style="color:#059669;font-weight:700">📄 Paper linked</span>' : '<span style="color:var(--warning);font-weight:700">⚠️ No paper link</span>';
+    html += '<div class="set-list-item"><div><div class="t">'+s.title+'</div><div class="m">'+s.totalQuestions+' questions • A–'+optionLetter(s.optionsCount)+' • '+s.timeLimitMinutes+' min • '+paperStatus+'</div></div><div class="set-actions"><button class="btn btn-ghost" onclick="editSet(\''+id+'\')">Edit</button><button class="btn btn-danger" onclick="deleteSet(\''+id+'\')">Delete</button></div></div>';
+  });
+  document.getElementById('setsListContainer').innerHTML = html;
+}
+
+
+function populateResultsSetSelect() {
+  const sel = document.getElementById('resultsSetSelect');
+  const cur = sel.value;
+  const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+  sel.innerHTML = '<option value="">-- choose a set --</option>';
+  entries.forEach(([id,s]) => {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = s.title;
+    sel.appendChild(opt);
+  });
+  if(cur) sel.value = cur;
+}
+
+function loadResultsForSet() {
+  const setId = document.getElementById('resultsSetSelect').value;
+  currentResultsSetId = setId;
+  if(!setId) { document.getElementById('resultsContent').innerHTML = ''; return; }
+  const {ref,onValue,db} = window.firebaseDB;
+  onValue(ref(db,'submissions/'+setId), snap => {
+    allSubmissions = snap.val() || {};
+    renderResults(setId);
+  });
+}
+
+function computeScoreAgainst(answers, set) {
+  answers = answers || {};
+  let score = 0;
+  const total = set.totalQuestions;
+  for(let q=1; q<=total; q++) {
+    if(answers[q] && set.answerKey[q] === answers[q]) score++;
+  }
+  return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0 };
+}
+
+let resultsSearchTerm = '';
+
+function renderResults(setId) {
+  const set = homeworkSets[setId];
+  if(!set) return;
+  const subs = Object.entries(allSubmissions).filter(([code,s]) => s.timedSubmittedAt);
+
+  // Always recompute from the live answer key rather than trusting the
+  // stored score fields — if the key gets corrected after students submit,
+  // this keeps the table accurate without a manual per-student fix.
+  const withLiveScores = subs.map(([code,s]) => {
+    const live = computeScoreAgainst(s.timedAnswers, set);
+    const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set) : null;
+    return { code, s, live, overtimeLive, stale: live.score !== s.timedScore };
+  });
+
+  const scores = withLiveScores.map(x => x.live.pct);
+  const avg = scores.length ? Math.round((scores.reduce((a,b)=>a+b,0)/scores.length)*10)/10 : 0;
+  const high = scores.length ? Math.max(...scores) : 0;
+  const low = scores.length ? Math.min(...scores) : 0;
+  const overtimeCount = withLiveScores.filter(x => x.overtimeLive).length;
+  const staleCount = withLiveScores.filter(x => x.stale).length;
+
+  // Cross-reference against students actually assigned this paper, so Dr Jon
+  // can see at a glance who still hasn't submitted — not just who has.
+  const assignedCodes = Object.entries(students).filter(([code,s]) => s.approvedSetIds && s.approvedSetIds[setId]).map(([code]) => code);
+  const submittedCodes = new Set(withLiveScores.map(x => x.code));
+  const outstanding = assignedCodes.filter(code => !submittedCodes.has(code));
+
+  let html = '<div class="stats">'
+    + '<div class="stat-card"><div class="number">'+subs.length+'</div><div class="label">Submitted</div></div>'
+    + '<div class="stat-card"><div class="number">'+avg+'%</div><div class="label">Class Average</div></div>'
+    + '<div class="stat-card"><div class="number">'+high+'%</div><div class="label">Highest</div></div>'
+    + '<div class="stat-card"><div class="number">'+low+'%</div><div class="label">Lowest</div></div>'
+    + '<div class="stat-card"><div class="number">'+overtimeCount+'</div><div class="label">Overtime Attempts</div></div>'
+    + '</div>';
+
+  if(assignedCodes.length > 0) {
+    if(outstanding.length > 0) {
+      const names = outstanding.map(code => studentName(code) || code).join(', ');
+      lastOutstanding = { setId, codes: outstanding, title: set.title };
+      html += '<div class="edit-warning">⏳ <strong>' + outstanding.length + ' of ' + assignedCodes.length + '</strong> assigned student(s) haven\'t submitted yet: ' + names + '<br><button class="btn btn-ghost" style="margin-top:8px" onclick="generateReminderMessage()">💬 Generate Reminder Message</button></div>';
+    } else {
+      html += '<div class="confirm-ready" style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600;margin-bottom:14px">✅ All ' + assignedCodes.length + ' assigned student(s) have submitted.</div>';
+    }
+  }
+
+  if(subs.length === 0) {
+    html += '<div class="card"><div class="empty">No submissions yet for this set.</div></div>';
+    document.getElementById('resultsContent').innerHTML = html;
+    return;
+  }
+
+  if(staleCount > 0) {
+    html += '<div class="edit-warning">⚠️ ' + staleCount + ' student(s) shown below have a score that differs from what was originally stored — likely because the answer key was edited after they submitted. The table already shows the corrected score. Click "Recalculate & Save" to also update the stored record.</div>';
+  }
+
+  html += '<div class="results-toolbar">'
+    + '<input type="text" id="resultsSearch" placeholder="🔍 Search by code or name..." value="'+resultsSearchTerm+'" oninput="onResultsSearch(this.value)">'
+    + '<button class="btn btn-ghost" onclick="exportResultsCsv()">⬇️ Export CSV</button>'
+    + '<button class="btn btn-primary" onclick="recalculateAllScores()">🔄 Recalculate & Save</button>'
+    + '</div>';
+
+  const term = resultsSearchTerm.trim().toLowerCase();
+  const filtered = withLiveScores.filter(x => {
+    if(!term) return true;
+    const name = studentName(x.code).toLowerCase();
+    return x.code.toLowerCase().includes(term) || name.includes(term);
+  });
+
+  html += '<div class="card"><table><thead><tr><th>Code</th><th>Name</th><th>Timed Score</th><th>Timed %</th><th>Overtime %</th><th>Submitted</th></tr></thead><tbody>';
+  filtered.sort((a,b) => b.live.pct - a.live.pct).forEach(({code, s, live, overtimeLive, stale}) => {
+    const name = studentName(code) || '—';
+    const pillClass = live.pct>=70?'good':live.pct>=50?'mid':'bad';
+    const overtimeCell = overtimeLive ? '<span class="pill mid">'+overtimeLive.pct+'%</span>' : '<span class="pill pending">—</span>';
+    const ts = new Date(s.timedSubmittedAt).toLocaleString('en-GB');
+    html += '<tr onclick="showBreakdown(\''+code+'\')"><td><strong>'+code+'</strong></td><td>'+name+'</td><td>'+live.score+' / '+live.total+(stale?'<span class="recalc-flag">recalculated</span>':'')+'</td><td><span class="pill '+pillClass+'">'+live.pct+'%</span></td><td>'+overtimeCell+'</td><td>'+ts+'</td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  if(filtered.length === 0) {
+    html += '<div class="card"><div class="empty">No students match "'+resultsSearchTerm+'"</div></div>';
+  }
+
+  document.getElementById('resultsContent').innerHTML = html;
+  const searchEl = document.getElementById('resultsSearch');
+  if(searchEl) { searchEl.focus(); searchEl.selectionStart = searchEl.selectionEnd = searchEl.value.length; }
+}
+
+function onResultsSearch(val) {
+  resultsSearchTerm = val;
+  renderResults(currentResultsSetId);
+}
+
+function exportResultsCsv() {
+  const set = homeworkSets[currentResultsSetId];
+  if(!set) return;
+  const subs = Object.entries(allSubmissions).filter(([code,s]) => s.timedSubmittedAt);
+  let csv = 'Code,Name,Timed Score,Timed Total,Timed %,Overtime Score,Overtime %,Submitted At\n';
+  subs.forEach(([code,s]) => {
+    const live = computeScoreAgainst(s.timedAnswers, set);
+    const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set) : null;
+    const name = studentName(code).replace(/,/g,' ');
+    const ts = new Date(s.timedSubmittedAt).toLocaleString('en-GB');
+    csv += [code, name, live.score, live.total, live.pct, overtimeLive?overtimeLive.score:'', overtimeLive?overtimeLive.pct:'', ts].join(',') + '\n';
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = set.title.replace(/[^a-z0-9]/gi,'_') + '_results.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function recalculateAllScores() {
+  const set = homeworkSets[currentResultsSetId];
+  if(!set) return;
+  if(!confirm('Recalculate and overwrite stored scores for every student in "' + set.title + '" using the current answer key?')) return;
+  const {ref,update,db} = window.firebaseDB;
+  const subs = Object.entries(allSubmissions);
+  for(const [code, s] of subs) {
+    const updates = {};
+    if(s.timedSubmittedAt) {
+      const live = computeScoreAgainst(s.timedAnswers, set);
+      updates.timedScore = live.score; updates.timedTotal = live.total; updates.timedPercentage = live.pct;
+    }
+    if(s.overtimeSubmittedAt) {
+      const liveOt = computeScoreAgainst(s.overtimeAnswers, set);
+      updates.overtimeScore = liveOt.score; updates.overtimeTotal = liveOt.total; updates.overtimePercentage = liveOt.pct;
+    }
+    if(Object.keys(updates).length) {
+      await update(ref(db,'submissions/'+currentResultsSetId+'/'+code), updates);
+    }
+  }
+  alert('✅ Scores recalculated and saved for ' + subs.length + ' student(s).');
+}
+
+function showBreakdown(code) {
+  showBreakdownFor(currentResultsSetId, code);
+}
+
+function showBreakdownFor(setId, code) {
+  const allSubsForSet = (setId === currentResultsSetId) ? allSubmissions : null;
+  const s = allSubsForSet ? allSubsForSet[code] : lastLoadedDetailSubs[setId];
+  const set = homeworkSets[setId];
+  const name = studentName(code) || code;
+
+  let html = '<h2>'+name+' — '+set.title+'</h2>';
+  html += buildBreakdownSection('Timed Attempt', s.timedAnswers, set);
+  if(s.overtimeSubmittedAt) {
+    html += buildBreakdownSection('Overtime Attempt', s.overtimeAnswers, set);
+  }
+  html += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button><button class="btn btn-ghost" style="flex:1" onclick="openEditAnswersModal(\''+setId+'\',\''+code+'\')">✏️ Edit Answers</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
+
+  document.getElementById('breakdownModalContent').innerHTML = html;
+  document.getElementById('breakdownModal').classList.add('show');
+}
+
+// ---- Manual answer override (fixes for technical glitches) ----
+function openEditAnswersModal(setId, code) {
+  const allSubsForSet = (setId === currentResultsSetId) ? allSubmissions : null;
+  const s = allSubsForSet ? allSubsForSet[code] : lastLoadedDetailSubs[setId];
+  const set = homeworkSets[setId];
+  if(!s || !set) return;
+
+  const hasOvertime = !!s.overtimeSubmittedAt;
+  let html = '<h2>✏️ Edit Answers — ' + (studentName(code)||code) + '</h2>';
+  html += '<p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Use this only to correct a technical glitch (e.g. an answer that failed to save). Changing these directly overwrites what the student actually submitted — their score is recalculated automatically after saving.</p>';
+  if(hasOvertime) {
+    html += '<div style="display:flex;gap:8px;margin-bottom:12px"><button class="tab-btn active" id="editAnsBtnTimed" style="flex:1" onclick="switchEditAnswersMode(\'timed\',\''+setId+'\',\''+code+'\')">Timed</button><button class="tab-btn" id="editAnsBtnOvertime" style="flex:1" onclick="switchEditAnswersMode(\'overtime\',\''+setId+'\',\''+code+'\')">Overtime</button></div>';
+  }
+  html += '<div id="editAnswersGrid" class="key-grid"></div>';
+  html += '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-green" style="flex:1" onclick="saveEditedAnswers(\''+setId+'\',\''+code+'\')">💾 Save & Recalculate</button><button class="btn btn-ghost" style="flex:1" onclick="closeEditAnswersModal()">Cancel</button></div>';
+
+  document.getElementById('editAnswersModalContent').innerHTML = html;
+  document.getElementById('editAnswersModal').classList.add('show');
+  editAnswersMode = 'timed';
+  renderEditAnswersGrid(setId, code);
+}
+
+function switchEditAnswersMode(mode, setId, code) {
+  editAnswersMode = mode;
+  document.getElementById('editAnsBtnTimed').classList.toggle('active', mode==='timed');
+  document.getElementById('editAnsBtnOvertime').classList.toggle('active', mode==='overtime');
+  renderEditAnswersGrid(setId, code);
+}
+
+function renderEditAnswersGrid(setId, code) {
+  const allSubsForSet = (setId === currentResultsSetId) ? allSubmissions : null;
+  const s = allSubsForSet ? allSubsForSet[code] : lastLoadedDetailSubs[setId];
+  const set = homeworkSets[setId];
+  const answers = (editAnswersMode === 'overtime' ? s.overtimeAnswers : s.timedAnswers) || {};
+
+  let html = '';
+  for(let q=1; q<=set.totalQuestions; q++) {
+    let opts = '<option value="">-</option>';
+    for(let i=1;i<=set.optionsCount;i++){ const l=optionLetter(i); opts += '<option value="'+l+'" '+(answers[q]===l?'selected':'')+'>'+l+'</option>'; }
+    html += '<div class="key-cell"><div class="qn">Q'+q+'</div><select id="editans_q'+q+'">'+opts+'</select></div>';
+  }
+  document.getElementById('editAnswersGrid').innerHTML = html;
+}
+
+async function saveEditedAnswers(setId, code) {
+  const set = homeworkSets[setId];
+  const newAnswers = {};
+  for(let q=1; q<=set.totalQuestions; q++) {
+    const val = document.getElementById('editans_q'+q).value;
+    if(val) newAnswers[q] = val;
+  }
+  const live = computeScoreAgainst(newAnswers, set);
+  const {ref,update,db} = window.firebaseDB;
+  const fields = editAnswersMode === 'overtime'
+    ? { overtimeAnswers: newAnswers, overtimeScore: live.score, overtimeTotal: live.total, overtimePercentage: live.pct }
+    : { timedAnswers: newAnswers, timedScore: live.score, timedTotal: live.total, timedPercentage: live.pct };
+
+  try {
+    await update(ref(db,'submissions/'+setId+'/'+code), fields);
+    alert('✅ Saved — new score: ' + live.score + '/' + live.total + ' (' + live.pct + '%)');
+    closeEditAnswersModal();
+    closeBreakdown();
+    if(setId === currentResultsSetId) loadResultsForSet();
+    const byStudentViewVisible = document.getElementById('perfByStudent').style.display !== 'none';
+    if(byStudentViewVisible && code === currentDetailCode) openStudentDetail(code);
+  } catch(err) {
+    alert('❌ Save failed: ' + err);
+  }
+}
+
+function closeEditAnswersModal() {
+  document.getElementById('editAnswersModal').classList.remove('show');
+}
+
+async function viewTimeline(code) {
+  await viewTimelineFor(currentResultsSetId, code);
+}
+
+async function viewTimelineFor(setId, code) {
+  const set = homeworkSets[setId];
+  const name = studentName(code) || code;
+  const {ref,get,db} = window.firebaseDB;
+
+  document.getElementById('timelineModalContent').innerHTML = '<h2>🕐 Timeline — ' + name + '</h2><p style="color:var(--muted);font-size:13px">Loading…</p>';
+  document.getElementById('timelineModal').classList.add('show');
+
+  try {
+    const snap = await get(ref(db,'submissions/'+setId+'/'+code+'/log'));
+    const log = snap.val() || {};
+    const entries = Object.values(log).sort((a,b) => a.ts - b.ts);
+
+    let html = '<h2>🕐 Timeline — ' + name + '</h2><p style="color:var(--muted);font-size:12.5px;margin-bottom:14px">' + set.title + '</p>';
+    if(entries.length === 0) {
+      html += '<div class="empty">No timeline events recorded for this student (they may have started before this feature was added).</div>';
+    } else {
+      html += '<div style="max-height:50vh;overflow-y:auto">';
+      entries.forEach(e => {
+        const time = new Date(e.ts).toLocaleString('en-GB');
+        html += '<div class="qrow" style="background:#f8fafc;border-left:3px solid var(--brand)"><span>' + time + '</span><span>' + describeLogEvent(e) + '</span></div>';
+      });
+      html += '</div>';
+    }
+    html += '<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="closeTimeline()">Close</button>';
+    document.getElementById('timelineModalContent').innerHTML = html;
+  } catch(err) {
+    document.getElementById('timelineModalContent').innerHTML = '<h2>🕐 Timeline</h2><div class="empty">Could not load timeline: ' + err + '</div><button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="closeTimeline()">Close</button>';
+  }
+}
+
+function describeLogEvent(e) {
+  switch(e.type) {
+    case 'confirm_start': return '✅ Confirmed start' + (e.paperOpened===false ? ' (paper pop-up was blocked)' : ' — paper opened') + ', ' + e.timeLimitMinutes + ' min timer began';
+    case 'confirm_start_overtime': return '⏱️ Confirmed start of overtime attempt';
+    case 'answer': return '📝 Answered Q' + e.question + ': ' + e.answer + ' (' + e.mode + ')';
+    case 'confirm_submit': return '📤 Confirmed submit (' + e.mode + ') — ' + e.answeredCount + '/' + e.totalQuestions + ' answered';
+    default: return e.type || 'Unknown event';
+  }
+}
+
+function generateReminderMessage() {
+  if(!lastOutstanding) return;
+  const names = lastOutstanding.codes.map(code => studentName(code) || code);
+  let msg = 'Hi ' + (names.length > 1 ? 'everyone' : names[0]) + ',\n\n';
+  msg += 'Friendly reminder that the following haven\'t submitted "' + lastOutstanding.title + '" yet:\n';
+  names.forEach(n => msg += '• ' + n + '\n');
+  msg += '\nPlease log in and complete it when you get a chance. Thanks!\n\nDr Jon';
+
+  const html = '<h2>💬 Reminder Message</h2><p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Copy and send via WhatsApp / email:</p><textarea id="reminderMsgText" style="width:100%;height:220px;padding:12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-family:inherit">'+msg+'</textarea><div style="display:flex;gap:10px;margin-top:12px"><button class="btn btn-primary" style="flex:1" onclick="copyReminderMessage()">📋 Copy to Clipboard</button><button class="btn btn-ghost" style="flex:1" onclick="closeTimeline()">Close</button></div>';
+  document.getElementById('timelineModalContent').innerHTML = html;
+  document.getElementById('timelineModal').classList.add('show');
+}
+
+function copyReminderMessage() {
+  const textarea = document.getElementById('reminderMsgText');
+  textarea.select();
+  navigator.clipboard.writeText(textarea.value).then(() => {
+    alert('✅ Copied! Paste it into WhatsApp, email, or wherever you want to send it.');
+  }).catch(() => {
+    document.execCommand('copy');
+    alert('✅ Copied!');
+  });
+}
+
+function closeTimeline() {
+  document.getElementById('timelineModal').classList.remove('show');
+}
+
+function buildBreakdownSection(label, answers, set) {
+  answers = answers || {};
+  let correct=0, incorrect=0, notAttempted=0;
+  let rows = '';
+  for(let q=1; q<=set.totalQuestions; q++) {
+    const given = answers[q];
+    const key = set.answerKey[q];
+    let cls, verdict;
+    if(!given) {
+      notAttempted++; cls='notattempted'; verdict='— Not attempted';
+    } else if(given === key) {
+      correct++; cls='correct'; verdict='✓ Correct';
+    } else {
+      incorrect++; cls='incorrect'; verdict='✗ Correct: '+key;
+    }
+    rows += '<div class="qrow '+cls+'"><span>Q'+q+': answered <strong>'+(given||'—')+'</strong></span><span>'+verdict+'</span></div>';
+  }
+  return '<h3 style="font-size:14px;margin:14px 0 8px;color:var(--brand)">'+label+' — '+correct+' / '+set.totalQuestions+' correct <span style="color:var(--muted);font-weight:600;font-size:12px">('+incorrect+' wrong, '+notAttempted+' not attempted)</span></h3>' + rows;
+}
+
+function closeBreakdown() {
+  document.getElementById('breakdownModal').classList.remove('show');
+}
+
+function populateSetDropdowns() {
+  const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+  const sel = document.getElementById('bulkAssignSet');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">-- choose a paper --</option>';
+  entries.forEach(([id,s]) => {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = s.title;
+    sel.appendChild(opt);
+  });
+  if(cur) sel.value = cur;
+}
+
+function saveStudent() {
+  const code = document.getElementById('stuCode').value.trim();
+  const name = document.getElementById('stuName').value.trim();
+  const pwd = document.getElementById('stuPwd').value;
+
+  if(!code) { alert('Please enter a code'); return; }
+  if(!name) { alert('Please enter a name'); return; }
+  if(!pwd) { alert('Please enter a password'); return; }
+
+  const {ref,set,get,db} = window.firebaseDB;
+
+  if(editingStudentCode) {
+    // editing: keep existing approvedSetIds, just update name/password
+    set(ref(db,'students/'+code), Object.assign({}, students[code], { name, password: pwd })).then(() => {
+      alert('✅ Profile updated: ' + name);
+      cancelStudentEdit();
+    }).catch(err => alert('Error: ' + err));
+    return;
+  }
+
+  if(students[code]) {
+    if(!confirm('A student with code "' + code + '" already exists — overwrite it?')) return;
+  }
+  set(ref(db,'students/'+code), { name, password: pwd, approvedSetIds: {} }).then(() => {
+    alert('✅ Profile created: ' + name + ' — they can now log in with code "' + code + '".');
+    cancelStudentEdit();
+  }).catch(err => alert('Error: ' + err));
+}
+
+function editStudent(code) {
+  const s = students[code];
+  if(!s) return;
+  editingStudentCode = code;
+  document.getElementById('studentFormTitle').textContent = 'Editing: ' + s.name + ' (' + code + ')';
+  document.getElementById('cancelStudentEditBtn').classList.remove('hidden');
+  document.getElementById('stuCode').value = code;
+  document.getElementById('stuCode').disabled = true;
+  document.getElementById('stuName').value = s.name || '';
+  document.getElementById('stuPwd').value = s.password || '';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function cancelStudentEdit() {
+  editingStudentCode = null;
+  document.getElementById('studentFormTitle').textContent = '➕ Create Student Profile';
+  document.getElementById('cancelStudentEditBtn').classList.add('hidden');
+  document.getElementById('stuCode').value = '';
+  document.getElementById('stuCode').disabled = false;
+  document.getElementById('stuName').value = '';
+  document.getElementById('stuPwd').value = '';
+}
+
+function deleteStudent(code) {
+  const s = students[code];
+  if(!confirm('Delete student "' + (s?s.name:code) + '" (' + code + ')? This does NOT delete their past submissions.')) return;
+  const {ref,remove,db} = window.firebaseDB;
+  remove(ref(db,'students/'+code));
+}
+
+function renderStudentsList() {
+  const entries = Object.entries(students).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+  if(entries.length === 0) {
+    document.getElementById('studentsListContainer').innerHTML = '<div class="empty">No students added yet</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Code</th><th>Name</th><th>Approved Papers</th><th></th></tr></thead><tbody>';
+  entries.forEach(([code, s]) => {
+    const approved = Object.keys(s.approvedSetIds || {}).filter(id => s.approvedSetIds[id] && homeworkSets[id]);
+    const chips = approved.length
+      ? approved.map(id => '<span class="pill pending" style="margin:2px">'+homeworkSets[id].title+'</span>').join(' ')
+      : '<span style="color:var(--muted)">— none —</span>';
+    html += '<tr><td><strong>'+code+'</strong></td><td>'+(s.name||'')+'</td><td>'+chips+'</td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="openApprovedPapersModal(\''+code+'\')">📌 Papers</button> <button class="btn btn-primary" style="padding:6px 10px;font-size:11px" onclick="openStudentDetail(\''+code+'\')">📋 Details</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="editStudent(\''+code+'\')">Edit</button> <button class="btn btn-danger" style="padding:6px 10px;font-size:11px" onclick="deleteStudent(\''+code+'\')">Delete</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('studentsListContainer').innerHTML = html;
+}
+
+// ---- Manage a single student's approved papers ----
+function openApprovedPapersModal(code) {
+  const s = students[code];
+  if(!s) return;
+  const approved = s.approvedSetIds || {};
+  const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+
+  let html = '<h2>📌 Approved Papers — ' + (s.name || code) + '</h2>';
+  if(entries.length === 0) {
+    html += '<div class="empty">No papers created yet.</div>';
+  } else {
+    html += '<div style="max-height:300px;overflow-y:auto;margin:10px 0">';
+    entries.forEach(([id, set]) => {
+      const checked = approved[id] ? 'checked' : '';
+      html += '<label style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox" class="approve-paper-cb" value="'+id+'" '+checked+'> '+set.title+'</label>';
+    });
+    html += '</div>';
+  }
+  html += '<div style="display:flex;gap:10px;margin-top:10px"><button class="btn btn-green" style="flex:1" onclick="saveApprovedPapers(\''+code+'\')">💾 Save</button><button class="btn btn-ghost" style="flex:1" onclick="closeApprovedPapersModal()">Cancel</button></div>';
+
+  document.getElementById('approvedPapersModalContent').innerHTML = html;
+  document.getElementById('approvedPapersModal').classList.add('show');
+}
+
+function saveApprovedPapers(code) {
+  const checked = Array.from(document.querySelectorAll('.approve-paper-cb:checked')).map(cb => cb.value);
+  const approvedSetIds = {};
+  checked.forEach(id => approvedSetIds[id] = true);
+  const {ref,set,db} = window.firebaseDB;
+  set(ref(db,'students/'+code+'/approvedSetIds'), approvedSetIds).then(() => {
+    closeApprovedPapersModal();
+  }).catch(err => alert('Error: ' + err));
+}
+
+function closeApprovedPapersModal() {
+  document.getElementById('approvedPapersModal').classList.remove('show');
+}
+
+function renderBulkChecklist() {
+  const entries = Object.entries(students).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+  const container = document.getElementById('bulkStudentChecklist');
+  if(entries.length === 0) {
+    container.innerHTML = '<p style="color:var(--muted);font-size:12px">Add some students first.</p>';
+    return;
+  }
+  let html = '';
+  entries.forEach(([code, s]) => {
+    html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;background:#f8fafc;border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer"><input type="checkbox" class="bulk-student-cb" value="'+code+'"> '+(s.name||code)+'</label>';
+  });
+  container.innerHTML = html;
+}
+
+function toggleAllStudents(checked) {
+  document.querySelectorAll('.bulk-student-cb').forEach(cb => cb.checked = checked);
+}
+
+function bulkAssignPaper() {
+  const setId = document.getElementById('bulkAssignSet').value;
+  if(!setId) { alert('Please choose a paper first'); return; }
+  const selected = Array.from(document.querySelectorAll('.bulk-student-cb:checked')).map(cb => cb.value);
+  if(selected.length === 0) { alert('Please tick at least one student'); return; }
+  const setTitle = homeworkSets[setId] ? homeworkSets[setId].title : setId;
+  if(!confirm('Approve "' + setTitle + '" for ' + selected.length + ' student(s)? This adds to what they already have.')) return;
+
+  const {ref,update,db} = window.firebaseDB;
+  let done = 0;
+  selected.forEach(code => {
+    update(ref(db,'students/'+code+'/approvedSetIds'), { [setId]: true }).then(() => {
+      done++;
+      if(done === selected.length) alert('✅ Approved "' + setTitle + '" for ' + selected.length + ' student(s).');
+    });
+  });
+}
+
+// ---- Student Detail (drill-down: all papers, dates, scores, chart) ----
+async function openStudentDetail(code) {
+  currentDetailCode = code;
+  const student = students[code];
+  if(!student) return;
+
+  switchTab('performance');
+  switchPerformanceView('student');
+  const selEl = document.getElementById('perfStudentSelect');
+  if(selEl) selEl.value = code;
+
+  document.getElementById('studentDetailTitle').textContent = (student.name || code) + ' (' + code + ')';
+  document.getElementById('studentDetailSummary').innerHTML = '<p style="font-size:12.5px;color:var(--muted)">Loading paper history…</p>';
+  document.getElementById('studentDetailChart').innerHTML = '';
+  document.getElementById('studentDetailTable').innerHTML = '';
+
+  const {ref,get,db} = window.firebaseDB;
+  const snap = await get(ref(db,'submissions'));
+  const allSubsTree = snap.val() || {};
+
+  const rows = [];
+  lastLoadedDetailSubs = {};
+  Object.entries(homeworkSets).forEach(([setId, set]) => {
+    const sub = allSubsTree[setId] && allSubsTree[setId][code];
+    if(sub) {
+      lastLoadedDetailSubs[setId] = sub;
+      rows.push({ setId, set, sub });
+    }
+  });
+  rows.sort((a,b) => (a.sub.startedAt||0) - (b.sub.startedAt||0));
+
+  const approvedTitles = Object.keys(student.approvedSetIds || {}).filter(id => student.approvedSetIds[id] && homeworkSets[id]).map(id => homeworkSets[id].title);
+  const approvedText = approvedTitles.length ? approvedTitles.join(', ') : '— none approved yet —';
+  document.getElementById('studentDetailSummary').innerHTML =
+    '<p style="font-size:13px"><strong>Approved papers:</strong> ' + approvedText + ' <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-left:6px" onclick="openApprovedPapersModal(\''+code+'\')">Manage</button></p>' +
+    '<p style="font-size:13px;margin-top:6px"><strong>Papers attempted so far:</strong> ' + rows.length + '</p>';
+
+  renderStudentPerformanceChart(rows);
+  renderStudentDetailTable(code, rows);
+}
+
+function renderStudentDetailTable(code, rows) {
+  const container = document.getElementById('studentDetailTable');
+  if(rows.length === 0) {
+    container.innerHTML = '<div class="empty">No papers attempted yet.</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Paper</th><th>Started</th><th>Timed Submitted</th><th>Timed %</th><th>Overtime %</th></tr></thead><tbody>';
+  rows.forEach(({setId, set, sub}) => {
+    const started = sub.startedAt ? new Date(sub.startedAt).toLocaleString('en-GB') : '—';
+    const submitted = sub.timedSubmittedAt ? new Date(sub.timedSubmittedAt).toLocaleString('en-GB') : '<span style="color:var(--gold)">not submitted</span>';
+    const live = sub.timedSubmittedAt ? computeScoreAgainst(sub.timedAnswers, set) : null;
+    const pillClass = live ? (live.pct>=70?'good':live.pct>=50?'mid':'bad') : null;
+    const timedCell = live ? '<span class="pill '+pillClass+'">'+live.pct+'%</span>' : '—';
+    const overtimeCell = sub.overtimeSubmittedAt ? '<span class="pill mid">'+computeScoreAgainst(sub.overtimeAnswers, set).pct+'%</span>' : '<span class="pill pending">—</span>';
+    html += '<tr onclick="showBreakdownFor(\''+setId+'\',\''+code+'\')"><td><strong>'+set.title+'</strong></td><td>'+started+'</td><td>'+submitted+'</td><td>'+timedCell+'</td><td>'+overtimeCell+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function renderStudentPerformanceChart(rows) {
+  const container = document.getElementById('studentDetailChart');
+  const submittedRows = rows.filter(r => r.sub.timedSubmittedAt);
+  if(submittedRows.length === 0) {
+    container.innerHTML = '<div class="empty">No completed papers yet to chart.</div>';
+    return;
+  }
+
+  const dataPoints = submittedRows.map(({set, sub}) => ({
+    label: set.title,
+    score: computeScoreAgainst(sub.timedAnswers, set).pct
+  }));
+
+  const width = 640, height = 260, padTop = 30, padBottom = 50, padLeft = 44, padRight = 20;
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padTop - padBottom;
+  const stepX = dataPoints.length > 1 ? plotW / (dataPoints.length - 1) : 0;
+
+  const points = dataPoints.map((d,i) => ({
+    x: padLeft + (dataPoints.length > 1 ? i*stepX : plotW/2),
+    y: padTop + plotH - (d.score/100)*plotH,
+    ...d
+  }));
+
+  let svg = '<svg viewBox="0 0 '+width+' '+height+'" style="width:100%;height:auto;display:block">';
+  [0,25,50,75,100].forEach(v => {
+    const y = padTop + plotH - (v/100)*plotH;
+    svg += '<line x1="'+padLeft+'" y1="'+y+'" x2="'+(width-padRight)+'" y2="'+y+'" stroke="#e2e8f0" stroke-width="1"/>';
+    svg += '<text x="'+(padLeft-8)+'" y="'+(y+4)+'" font-size="11" fill="#64748b" text-anchor="end">'+v+'%</text>';
+  });
+
+  if(points.length > 1) {
+    const linePath = points.map((p,i) => (i===0?'M':'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+    svg += '<path d="'+linePath+'" fill="none" stroke="#1e40af" stroke-width="2.5"/>';
+  }
+  points.forEach(p => {
+    const truncated = p.label.length > 12 ? p.label.slice(0,11)+'…' : p.label;
+    svg += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="5" fill="#1e40af"/>';
+    svg += '<text x="'+p.x.toFixed(1)+'" y="'+(p.y-12).toFixed(1)+'" font-size="11" fill="#1e40af" font-weight="700" text-anchor="middle">'+p.score+'%</text>';
+    svg += '<text x="'+p.x.toFixed(1)+'" y="'+(height-padBottom+18)+'" font-size="10" fill="#64748b" text-anchor="middle">'+truncated+'</text>';
+  });
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
+
+// ---- Full backup / restore ----
+async function downloadFullBackup() {
+  const statusEl = document.getElementById('backupStatus');
+  statusEl.textContent = 'Gathering data from Firebase…';
+  try {
+    const {ref,get,db} = window.firebaseDB;
+    const [setsSnap, studentsSnap, submissionsSnap] = await Promise.all([
+      get(ref(db,'homeworkSets')),
+      get(ref(db,'students')),
+      get(ref(db,'submissions'))
+    ]);
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      homeworkSets: setsSnap.val() || {},
+      students: studentsSnap.val() || {},
+      submissions: submissionsSnap.val() || {}
+    };
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tmua-esat-backup-' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    const setCount = Object.keys(backup.homeworkSets).length;
+    const studentCount = Object.keys(backup.students).length;
+    let subCount = 0;
+    Object.values(backup.submissions).forEach(setSubs => subCount += Object.keys(setSubs || {}).length);
+    statusEl.textContent = '✅ Downloaded: ' + setCount + ' set(s), ' + studentCount + ' student(s), ' + subCount + ' submission(s).';
+    localStorage.setItem('tmuaEsatLastBackupAt', String(Date.now()));
+    renderBackupReminder();
+  } catch(err) {
+    statusEl.textContent = '❌ Backup failed: ' + err;
+  }
+}
+
+function restoreFromBackup() {
+  const fileInput = document.getElementById('restoreFileInput');
+  const file = fileInput.files[0];
+  const statusEl = document.getElementById('restoreStatus');
+  if(!file) { statusEl.textContent = 'Please choose a backup file first.'; return; }
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    let backup;
+    try {
+      backup = JSON.parse(e.target.result);
+    } catch(err) {
+      statusEl.textContent = '❌ That file is not valid JSON.';
+      return;
+    }
+
+    const sections = ['homeworkSets','students','submissions'].filter(k => backup[k]);
+    if(sections.length === 0) {
+      statusEl.textContent = '❌ This file has none of the expected sections (homeworkSets / students / submissions).';
+      return;
+    }
+    if(!confirm('This will OVERWRITE the following in Firebase: ' + sections.join(', ') + '.\n\nThis cannot be undone. Continue?')) return;
+
+    const {ref,set,db} = window.firebaseDB;
+    statusEl.textContent = 'Restoring…';
+    try {
+      for(const key of sections) {
+        await set(ref(db, key), backup[key]);
+      }
+      statusEl.textContent = '✅ Restored: ' + sections.join(', ') + '.';
+      fileInput.value = '';
+    } catch(err) {
+      statusEl.textContent = '❌ Restore failed: ' + err;
+    }
+  };
+  reader.readAsText(file);
+}
+
+// TEMPORARY: login gate bypassed — auto-initialize the panel on page load.
+loadData();
+rebuildKeyGrid();
+switchTab('home');
+</script>
+</body>
+</html>

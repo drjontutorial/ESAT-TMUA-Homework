@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dr Jon's TMUA/ESAT Homework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,900&display=swap" rel="stylesheet">
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { getDatabase, ref, get, set, update, onValue, push } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAS34ly4yLmiw8hBWN62wg5fi8IhzPwZqI",
+  authDomain: "drjonbooking.firebaseapp.com",
+  databaseURL: "https://drjonbooking-default-rtdb.firebaseio.com",
+  projectId: "drjonbooking",
+  storageBucket: "drjonbooking.firebasestorage.app",
+  messagingSenderId: "211688494004",
+  appId: "1:211688494004:web:cae320e93861f53a59d8e1"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+window.firebaseDB = { ref, get, set, update, onValue, push, db };
+</script>
+
+<style>
+:root{
+  --brand:#1e40af;--brand-light:#e0e7ff;--bg:#f8fafc;--card:#fff;
+  --green:#0891b2;--green-bg:#e0f2fe;--green-dark:#164e63;
+  --line:#e2e8f0;--ink:#0f172a;--muted:#64748b;--warning:#dc2626;--warning-bg:#fee2e2;
+  --gold:#d97706;--gold-bg:#fef3c7;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--ink)}
+.app{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+
+header{
+  position:sticky;top:0;z-index:99;
+  background:rgba(255,255,255,0.97);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+  padding:14px 16px;
+  margin:0 -16px 20px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+}
+header h1{font-family:'DM Serif Display',serif;font-size:20px;color:var(--brand);line-height:1.1}
+header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+
+.timer{background:var(--brand);color:#fff;border-radius:12px;padding:10px 16px;font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;min-width:90px;text-align:center}
+.timer.warn{background:var(--gold)}
+.timer.danger{background:var(--warning);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+.card{background:var(--card);border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,.06);border:1px solid var(--line);padding:24px;margin-bottom:16px}
+.card h2{font-family:'DM Serif Display',serif;font-size:24px;font-weight:400;margin-bottom:6px}
+.card .sub{font-size:13px;color:var(--muted);margin-bottom:16px}
+
+.code-input,.select-input{border:1.5px solid var(--line);border-radius:12px;padding:13px;margin:0 0 12px;width:100%;font-size:15px;font-family:'DM Sans',sans-serif}
+.btn{display:block;width:100%;background:var(--brand);color:#fff;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer;box-shadow:0 4px 20px rgba(30,64,175,.3);transition:all .15s}
+.btn:active{transform:translateY(-1px)}
+.btn.secondary{background:var(--line);color:var(--ink);box-shadow:none}
+.btn.green{background:var(--green)}
+.btn.warn{background:var(--warning)}
+
+.msg{margin:0 0 12px;padding:12px 14px;border-radius:10px;font-weight:600;display:none;font-size:13px}
+.msg.success{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;display:block}
+.msg.error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;display:block}
+
+.set-item{background:#f8fafc;border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px;cursor:pointer;transition:all .15s}
+.set-item:active{background:var(--brand-light)}
+.set-item .t{font-weight:800;font-size:15px;margin-bottom:4px}
+.set-item .m{font-size:12px;color:var(--muted)}
+.set-item .badge{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:50px;font-size:10px;font-weight:800;text-transform:uppercase}
+.badge.not-started{background:var(--brand-light);color:var(--brand)}
+.badge.completed{background:#d1fae5;color:#065f46}
+.badge.overtime-pending{background:var(--gold-bg);color:var(--gold)}
+
+.home-tabs{display:flex;gap:8px;margin-top:16px}
+.home-tab-btn{flex:1;padding:11px;border:1.5px solid var(--line);border-radius:10px;background:#fff;font-weight:800;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--muted)}
+.home-tab-btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.progress-score-summary{text-align:center;padding:14px 0 6px}
+.progress-score-summary .big{font-size:40px;font-weight:900;color:var(--brand)}
+.progress-score-summary .small{font-size:12.5px;color:var(--muted);font-weight:700;margin-top:2px}
+
+.warning-box{background:var(--warning-bg);border:2px solid #fca5a5;border-radius:16px;padding:20px;margin-bottom:16px}
+.warning-box h3{color:var(--warning);font-size:16px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.warning-box li{color:#7f1d1d;font-size:13.5px;margin:8px 0;line-height:1.5}
+.warning-box ul{padding-left:20px}
+
+.overtime-banner{background:var(--gold-bg);border:2px solid #fbbf24;border-radius:14px;padding:14px 16px;margin-bottom:16px;font-size:13.5px;color:#92400e;font-weight:700}
+.timesup-banner{background:var(--warning-bg);border:2px solid #fca5a5;border-radius:14px;padding:14px 16px;margin-bottom:16px;font-size:13.5px;color:#991b1b;font-weight:700}
+
+.qblock{border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px;background:#fafafa}
+.qblock .qnum{font-weight:800;font-size:14px;margin-bottom:10px;color:var(--brand)}
+.opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.opt{position:relative}
+.opt input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;margin:0}
+.opt label{display:flex;align-items:center;justify-content:center;height:44px;border:1.5px solid var(--line);border-radius:10px;background:#fff;font-weight:800;font-size:14px;cursor:pointer;transition:all .12s}
+.opt input:checked + label{background:var(--brand);color:#fff;border-color:var(--brand)}
+.qblock.review .opt label{cursor:default}
+.qblock.correct{border-color:#6ee7b7;background:#f0fdf4}
+.qblock.incorrect{border-color:#fca5a5;background:#fef2f2}
+.qblock .verdict{float:right;font-size:12px;font-weight:800}
+.qblock .verdict.ok{color:#059669}
+.qblock .verdict.no{color:#dc2626}
+.qblock .correct-ans{font-size:12px;color:var(--muted);margin-top:8px;font-weight:600}
+
+.score-summary{text-align:center;padding:20px 0}
+.score-summary .pct{font-size:48px;font-weight:900;color:var(--brand);line-height:1}
+.score-summary .frac{font-size:14px;color:var(--muted);margin-top:4px;font-weight:700}
+.score-row{display:flex;gap:12px;margin-top:16px}
+.score-box{flex:1;background:#f1f5f9;border-radius:12px;padding:14px;text-align:center}
+.score-box .n{font-size:22px;font-weight:900;color:var(--brand)}
+.score-box .l{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-top:2px}
+
+.hidden{display:none!important}
+.back-link{font-size:13px;color:var(--brand);font-weight:700;cursor:pointer;margin-bottom:14px;display:inline-block}
+
+.progress-bar{position:sticky;top:74px;z-index:90;background:rgba(255,255,255,.97);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:12px;font-weight:800;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.progress-track{flex:1;height:6px;background:var(--line);border-radius:50px;overflow:hidden}
+.progress-fill{height:100%;background:var(--brand);border-radius:50px;transition:width .2s}
+.recalc-note{font-size:11px;color:var(--gold);font-weight:700;margin-top:6px}
+.submitted-note{background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:12px;padding:12px 14px;margin-top:16px;font-size:12.5px;color:#065f46;font-weight:600;text-align:left;line-height:1.5}
+
+/* ---- Exam chrome (mimics the real Pearson VUE ESAT interface) ---- */
+.exam-chrome{margin:0 -16px;position:sticky;top:0;z-index:95;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.exam-topbar{background:var(--brand);color:#fff;padding:13px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.exam-topbar .exam-title{font-family:'DM Serif Display',serif;font-size:16px;line-height:1.2}
+.exam-qcounter{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;background:rgba(255,255,255,.16);padding:7px 13px;border-radius:50px;cursor:pointer;border:0;color:#fff;font-family:'DM Sans',sans-serif;white-space:nowrap}
+.exam-subbar{background:#3151c9;padding:9px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.exam-flag-btn{background:rgba(255,255,255,.14);border:1.5px solid rgba(255,255,255,.4);color:#fff;padding:7px 13px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif}
+.exam-flag-btn.active{background:var(--gold);border-color:var(--gold)}
+.exam-timer-inline{background:rgba(255,255,255,.16);border-radius:8px;padding:7px 14px;font-weight:900;font-size:15px;font-variant-numeric:tabular-nums;color:#fff}
+.exam-timer-inline.warn{background:var(--gold)}
+.exam-timer-inline.danger{background:var(--warning);animation:pulse 1s infinite}
+
+.exam-content{background:var(--card);padding:26px 18px 30px;margin:0 -16px;box-shadow:0 4px 20px rgba(0,0,0,.05);min-height:40vh}
+.exam-qnum{font-family:'DM Serif Display',serif;font-size:21px;color:var(--brand);margin-bottom:18px}
+.examopt-row{display:flex;align-items:center;gap:14px;padding:16px 6px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .1s}
+.examopt-row:active{background:#f8fafc}
+.examopt-row:last-child{border-bottom:0}
+.examopt-radio{width:22px;height:22px;border-radius:50%;border:2px solid #94a3b8;flex-shrink:0;position:relative}
+.examopt-row input{display:none}
+.examopt-row input:checked + .examopt-radio{border-color:var(--brand)}
+.examopt-row input:checked + .examopt-radio::after{content:'';position:absolute;inset:3px;background:var(--brand);border-radius:50%}
+.examopt-label{font-size:15.5px;font-weight:700}
+
+.exam-bottombar{position:sticky;bottom:0;background:var(--brand);margin:0 -16px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;z-index:95;box-shadow:0 -2px 12px rgba(0,0,0,.1)}
+.exam-nav-btn{background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;padding:11px 16px;border-radius:10px;font-weight:800;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;flex:1}
+.exam-nav-btn:disabled{opacity:.35;cursor:not-allowed}
+.exam-nav-btn.primary{background:var(--green);border-color:var(--green)}
+.exam-nav-icon{background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;width:56px;height:46px;border-radius:10px;font-size:16px;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1}
+.exam-nav-icon .exam-nav-icon-label{font-size:9px;font-weight:800;letter-spacing:.3px}
+
+/* ---- Navigator & confirm modals ---- */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:16px;overflow-y:auto}
+.modal-overlay.show{display:flex}
+.modal{background:var(--card);border-radius:16px;padding:22px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:85vh;overflow-y:auto}
+.modal h2{font-family:'DM Serif Display',serif;font-size:19px;margin-bottom:14px;font-weight:400;color:var(--brand)}
+.nav-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:8px;margin:14px 0}
+.nav-cell{aspect-ratio:1;border-radius:8px;border:2px solid var(--line);background:#f8fafc;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;cursor:pointer;position:relative;color:var(--ink)}
+.nav-cell.answered{background:var(--brand-light);border-color:var(--brand);color:var(--brand)}
+.nav-cell.current{border-color:var(--ink);border-width:3px}
+.nav-cell.flagged::after{content:'⚑';position:absolute;top:-7px;right:-7px;font-size:12px;color:var(--gold)}
+.nav-summary{font-size:12.5px;color:var(--muted);font-weight:700;text-align:center;margin-bottom:8px}
+.nav-legend{display:flex;gap:14px;justify-content:center;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:14px;flex-wrap:wrap}
+.nav-legend span{display:flex;align-items:center;gap:5px}
+.nav-legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.confirm-unanswered{background:var(--warning-bg);border:1.5px solid #fca5a5;border-radius:10px;padding:12px 14px;font-size:13px;color:#991b1b;font-weight:600;margin-bottom:14px}
+.confirm-ready{background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600;margin-bottom:14px}
+</style>
+</head>
+<body>
+
+<div class="app">
+<header>
+  <div>
+    <h1>Dr Jon's TMUA/ESAT Homework</h1>
+    <p>Answer • Submit • Review</p>
+  </div>
+</header>
+
+<!-- LOGIN -->
+<div class="card" id="loginCard">
+  <h2>Log in</h2>
+  <p class="sub">Enter the code and password your tutor gave you.</p>
+  <div class="msg" id="loginMsg"></div>
+  <input type="text" id="codeInput" class="code-input" maxlength="10" placeholder="Your code">
+  <input type="password" id="pwdInput" class="code-input" placeholder="Your password">
+  <button class="btn" onclick="loginStudent()">Log in</button>
+</div>
+
+<!-- TEST MODE (temporary — will be removed once real students start using this) -->
+<div class="card" id="testModeCard">
+  <h2>🧪 Test Mode</h2>
+  <p class="sub">A no-password way in, for testing only.</p>
+
+  <div style="background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:12px;padding:14px;margin-bottom:16px">
+    <div style="font-weight:800;font-size:13px;color:#065f46;margin-bottom:6px">⚡ Quickest option</div>
+    <p style="font-size:12.5px;color:#065f46;margin-bottom:10px">Try a built-in 5-question sample test right now — no Firebase setup needed, nothing gets saved anywhere.</p>
+    <button class="btn green" onclick="startLocalDemo()">▶ Start built-in sample test</button>
+  </div>
+
+  <p class="sub">Or preview any real homework set as if you were a student (bypasses which papers are actually approved for a code):</p>
+  <div class="msg" id="testModeMsg"></div>
+  <input type="text" id="testCodeInput" class="code-input" placeholder="Any test code, e.g. test1" value="test1">
+  <select id="testSetSelect" class="select-input"><option value="">-- loading sets... --</option></select>
+  <button class="btn secondary" onclick="enterTestMode()">Enter as test student</button>
+</div>
+
+<!-- STUDENT HOME (after login) -->
+<div class="hidden" id="studentHomeCard">
+  <div class="card" style="padding-bottom:14px">
+    <h2 id="welcomeName">Welcome</h2>
+    <div class="home-tabs">
+      <button class="home-tab-btn active" id="homeTabPapers" onclick="switchHomeTab('papers')">📄 My Papers</button>
+      <button class="home-tab-btn" id="homeTabProgress" onclick="switchHomeTab('progress')">📈 My Progress</button>
+    </div>
+  </div>
+
+  <div id="myPapersSection">
+    <div class="card">
+      <p class="sub" style="margin-bottom:14px">Papers your tutor has approved for you. Tap one to start or view your results.</p>
+      <div id="myPaperContent"></div>
+    </div>
+  </div>
+
+  <div class="hidden" id="myProgressSection">
+    <div class="card">
+      <h2 style="font-size:17px">📈 Score Over Time</h2>
+      <div id="myProgressChart"></div>
+    </div>
+    <div class="card">
+      <h2 style="font-size:17px">📋 My History</h2>
+      <div id="myProgressTable"></div>
+    </div>
+  </div>
+</div>
+
+<!-- WARNING / START SCREEN -->
+<div class="hidden" id="warningScreen">
+  <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
+  <div class="warning-box">
+    <h3>⚠️ Before you press Start</h3>
+    <ul>
+      <li><strong>You only get ONE timed attempt</strong> — the clock can't be reset once it begins, and it keeps running even if you leave the page.</li>
+      <li>Pressing Start will <strong>open your exam paper in a new tab</strong> — make sure pop-ups aren't blocked.</li>
+      <li>When time's up your answers are saved automatically; you can keep going after, but it only counts as a separate overtime score.</li>
+    </ul>
+  </div>
+  <div class="card" id="startInfoCard">
+    <h2 id="startTitle">—</h2>
+    <p class="sub" id="startMeta">—</p>
+    <div class="msg" id="startWarnMsg"></div>
+    <button class="btn" onclick="beginTimedTest()">✓ Start Timer & Open My Paper</button>
+  </div>
+</div>
+
+<!-- OVERTIME RESUME WARNING -->
+<div class="hidden" id="overtimeWarningScreen">
+  <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
+  <div class="warning-box">
+    <h3>⏱️ This will be an OVERTIME attempt</h3>
+    <ul>
+      <li>Your one timed trial for this set has already been used.</li>
+      <li>Anything you answer now counts only towards your <strong>overtime score</strong>, shown separately from your timed score.</li>
+    </ul>
+  </div>
+  <button class="btn warn" onclick="beginOvertime()">Continue to overtime answers</button>
+</div>
+
+<!-- QUESTIONS (one at a time, exam-style) -->
+<div class="hidden" id="quizScreen">
+  <div class="exam-chrome">
+    <div class="exam-topbar">
+      <div class="exam-title" id="examTitle">—</div>
+      <button class="exam-qcounter" onclick="openNavigator()">📑 <span id="qCounterText">Q1 of 1</span></button>
+    </div>
+    <div class="exam-subbar">
+      <button class="exam-flag-btn" id="flagBtn" onclick="toggleFlag()">⚑ Flag for Review</button>
+      <button class="exam-flag-btn hidden" id="paperLinkBtn" onclick="openPaperLink()">📄 Open Paper</button>
+      <div class="exam-timer-inline hidden" id="timerBox">--:--</div>
+    </div>
+  </div>
+
+  <div class="hidden timesup-banner" id="timesUpBanner">⏰ Time's up! Your answers have been recorded as your timed score. You can keep going — further changes count as overtime.</div>
+  <div class="hidden overtime-banner" id="overtimeBanner">⏱️ Overtime mode — these answers are scored separately from your timed attempt.</div>
+
+  <div class="exam-content">
+    <div class="exam-qnum" id="examQNum">Question 1</div>
+    <div id="examOptions"></div>
+  </div>
+
+  <div class="exam-bottombar">
+    <button class="exam-nav-btn" id="prevBtn" onclick="goPrevQuestion()">← Back</button>
+    <button class="exam-nav-icon" onclick="openNavigator()" title="Navigator"><span>🧭</span><span class="exam-nav-icon-label">Navigator</span></button>
+    <button class="exam-nav-btn primary" id="nextBtn" onclick="goNextQuestion()">Next →</button>
+  </div>
+</div>
+
+<!-- NAVIGATOR MODAL -->
+<div class="modal-overlay" id="navigatorModal">
+  <div class="modal">
+    <h2>🧭 Navigator — select a question to go to it</h2>
+    <div class="nav-legend">
+      <span><i style="background:var(--brand-light);border:1.5px solid var(--brand)"></i> Answered</span>
+      <span><i style="background:#f8fafc;border:1.5px solid var(--line)"></i> Unanswered</span>
+      <span><i style="background:transparent;border:2px solid var(--gold)"></i> ⚑ Flagged</span>
+    </div>
+    <div class="nav-grid" id="navGrid"></div>
+    <div class="nav-summary" id="navSummary"></div>
+    <button class="btn secondary" onclick="closeNavigator()">Close</button>
+  </div>
+</div>
+
+<!-- SUBMIT CONFIRM MODAL -->
+<div class="modal-overlay" id="submitConfirmModal">
+  <div class="modal">
+    <h2>Submit your answers?</h2>
+    <div id="submitConfirmBanner"></div>
+    <p style="font-size:13.5px;color:var(--muted);margin-bottom:6px">Once submitted, you won't be able to change these answers. Please make sure you're ready.</p>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn secondary" onclick="closeSubmitConfirm()" style="flex:1">Cancel, go back</button>
+      <button class="btn green" onclick="confirmSubmit()" style="flex:1">✓ Yes, submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div class="hidden" id="resultsScreen">
+  <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
+  <div class="card">
+    <h2 id="resultsTitle">Results</h2>
+    <div class="score-summary" id="scoreSummary"></div>
+  </div>
+  <div id="breakdownContainer"></div>
+  <button class="btn secondary hidden" id="continueOvertimeBtn" onclick="goToOvertime()">Continue to overtime attempt</button>
+</div>
+
+</div>
+
+<script>
+let studentCode = '';
+let studentRecord = null;
+let homeworkSets = {};
+let currentSetId = null;
+let currentSet = null;
+let currentAnswers = {};
+let currentMode = 'timed'; // 'timed' | 'overtime'
+let timerInterval = null;
+let remainingSeconds = 0;
+let timedFinalized = false;
+let isLocalDemo = false;
+let localDemoSub = null; // in-memory stand-in for a Firebase submission doc, demo mode only
+let isTestModeAllSets = false; // when true (Test Mode), show every homework set regardless of real approvals
+let currentQIndex = 0; // 0-based index of the question currently shown
+let flaggedQuestions = new Set(); // question numbers (1-based) flagged for review, per attempt
+
+const DEMO_SET = {
+  title: 'Sample Quick Test',
+  totalQuestions: 5,
+  optionsCount: 4,
+  timeLimitMinutes: 2,
+  paperUrl: 'https://example.com/sample-paper-placeholder',
+  answerKey: { 1:'A', 2:'B', 3:'C', 4:'D', 5:'A' }
+};
+
+function startLocalDemo() {
+  isLocalDemo = true;
+  studentCode = 'localdemo';
+  studentRecord = { name: 'Sample Student' };
+  currentSetId = 'local-demo';
+  currentSet = DEMO_SET;
+  localDemoSub = { startedAt: null, draftAnswers: {} };
+  document.getElementById('loginCard').classList.add('hidden');
+  document.getElementById('testModeCard').classList.add('hidden');
+  document.getElementById('startTitle').textContent = currentSet.title;
+  document.getElementById('startMeta').textContent = currentSet.totalQuestions + ' questions • ' + currentSet.timeLimitMinutes + ' minute time limit • Options A–' + optionLetter(currentSet.optionsCount) + ' • (demo — nothing is saved)';
+  showPaperReadiness();
+  document.getElementById('warningScreen').classList.remove('hidden');
+}
+
+function showMsg(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + cls;
+}
+
+// ---- Real login ----
+async function loginStudent() {
+  const code = document.getElementById('codeInput').value.trim();
+  const pwd = document.getElementById('pwdInput').value;
+  if(!code || !pwd) { showMsg('loginMsg','Please enter both your code and password','error'); return; }
+  if(!window.firebaseDB) { showMsg('loginMsg','Still connecting, try again in a second','error'); return; }
+  const {ref,get,db} = window.firebaseDB;
+  try {
+    const snap = await get(ref(db,'students/'+code));
+    if(!snap.exists() || snap.val().password !== pwd) {
+      showMsg('loginMsg','Incorrect code or password','error');
+      return;
+    }
+    studentCode = code;
+    studentRecord = snap.val();
+    isTestModeAllSets = false;
+    document.getElementById('loginCard').classList.add('hidden');
+    document.getElementById('testModeCard').classList.add('hidden');
+    enterStudentHome();
+  } catch(e) {
+    showMsg('loginMsg','Something went wrong — please try again','error');
+  }
+}
+
+function enterStudentHome() {
+  document.getElementById('studentHomeCard').classList.remove('hidden');
+  document.getElementById('welcomeName').textContent = 'Welcome, ' + (studentRecord.name || studentCode) + (isTestModeAllSets ? ' 🧪' : '');
+  switchHomeTab('papers');
+  loadHomeworkSetsThenShowPaper();
+}
+
+function switchHomeTab(tab) {
+  document.getElementById('myPapersSection').classList.toggle('hidden', tab !== 'papers');
+  document.getElementById('myProgressSection').classList.toggle('hidden', tab !== 'progress');
+  document.getElementById('homeTabPapers').classList.toggle('active', tab === 'papers');
+  document.getElementById('homeTabProgress').classList.toggle('active', tab === 'progress');
+  if(tab === 'progress') renderMyProgress();
+}
+
+function loadHomeworkSetsThenShowPaper() {
+  if(!window.firebaseDB) { setTimeout(loadHomeworkSetsThenShowPaper,100); return; }
+  const {ref,onValue,db} = window.firebaseDB;
+  onValue(ref(db,'homeworkSets'), snap => {
+    homeworkSets = snap.val() || {};
+    renderMyPaperCard();
+  });
+}
+
+function myApprovedSetIds() {
+  if(isTestModeAllSets) return Object.keys(homeworkSets);
+  const approved = (studentRecord && studentRecord.approvedSetIds) || {};
+  return Object.keys(approved).filter(id => approved[id] && homeworkSets[id]);
+}
+
+async function renderMyPaperCard() {
+  const container = document.getElementById('myPaperContent');
+  const setIds = myApprovedSetIds();
+  if(setIds.length === 0) {
+    container.innerHTML = '<p style="color:var(--muted);font-size:14px;padding:10px 0">No papers have been approved for you yet — please check with Dr Jon.</p>';
+    return;
+  }
+  const {ref,get,db} = window.firebaseDB;
+  let html = '';
+  for(const setId of setIds.sort((a,b) => (homeworkSets[b].createdAt||0)-(homeworkSets[a].createdAt||0))) {
+    const set = homeworkSets[setId];
+    let badge = '<span class="badge not-started">Not started</span>';
+    try {
+      const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
+      const sub = snap.exists() ? snap.val() : null;
+      if(sub && sub.overtimeSubmittedAt) badge = '<span class="badge completed">Completed (+ overtime)</span>';
+      else if(sub && sub.timedSubmittedAt) badge = '<span class="badge overtime-pending">Timed done — overtime available</span>';
+      else if(sub && sub.startedAt) badge = '<span class="badge not-started">In progress</span>';
+    } catch(e) {}
+    html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+set.title+'</div><div class="m">'+set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit</div>'+badge+'</div>';
+  }
+  container.innerHTML = html;
+}
+
+// ---- My Progress: chart + history table (mirrors the admin's student-detail view) ----
+async function renderMyProgress() {
+  const chartEl = document.getElementById('myProgressChart');
+  const tableEl = document.getElementById('myProgressTable');
+  chartEl.innerHTML = '<p style="color:var(--muted);font-size:13px">Loading…</p>';
+  tableEl.innerHTML = '';
+
+  const setIds = myApprovedSetIds();
+  const {ref,get,db} = window.firebaseDB;
+  const rows = [];
+  for(const setId of setIds) {
+    const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
+    if(snap.exists()) {
+      const sub = snap.val();
+      if(sub.timedSubmittedAt) rows.push({ setId, set: homeworkSets[setId], sub });
+    }
+  }
+  rows.sort((a,b) => a.sub.timedSubmittedAt - b.sub.timedSubmittedAt);
+
+  if(rows.length === 0) {
+    chartEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Complete a paper to start seeing your progress here.</div>';
+    tableEl.innerHTML = '';
+    return;
+  }
+
+  const avgPct = Math.round(rows.reduce((sum,r) => sum + computeScoreAgainstSet(r.sub.timedAnswers, r.set).pct, 0) / rows.length * 10) / 10;
+  chartEl.innerHTML = '<div class="progress-score-summary"><div class="big">'+avgPct+'%</div><div class="small">Average across '+rows.length+' completed paper'+(rows.length>1?'s':'')+'</div></div>' + buildProgressChartSvg(rows);
+
+  let tableHtml = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase"><th style="padding:8px 4px">Paper</th><th style="padding:8px 4px">Date</th><th style="padding:8px 4px;text-align:right">Score</th></tr></thead><tbody>';
+  rows.slice().reverse().forEach(({set, sub}) => {
+    const live = computeScoreAgainstSet(sub.timedAnswers, set);
+    const date = new Date(sub.timedSubmittedAt).toLocaleDateString('en-GB');
+    tableHtml += '<tr style="border-top:1px solid var(--line)"><td style="padding:9px 4px;font-weight:700">'+set.title+'</td><td style="padding:9px 4px;color:var(--muted)">'+date+'</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+live.pct+'%</td></tr>';
+  });
+  tableHtml += '</tbody></table>';
+  tableEl.innerHTML = tableHtml;
+}
+
+function computeScoreAgainstSet(answers, set) {
+  answers = answers || {};
+  let score = 0;
+  const total = set.totalQuestions;
+  for(let q=1; q<=total; q++) {
+    if(answers[q] && set.answerKey[q] === answers[q]) score++;
+  }
+  return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0 };
+}
+
+function buildProgressChartSvg(rows) {
+  const width = 640, height = 240, padTop = 24, padBottom = 46, padLeft = 40, padRight = 16;
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padTop - padBottom;
+  const stepX = rows.length > 1 ? plotW / (rows.length - 1) : 0;
+
+  const points = rows.map(({set, sub}, i) => {
+    const pct = computeScoreAgainstSet(sub.timedAnswers, set).pct;
+    return {
+      x: padLeft + (rows.length > 1 ? i*stepX : plotW/2),
+      y: padTop + plotH - (pct/100)*plotH,
+      score: pct,
+      label: set.title
+    };
+  });
+
+  let svg = '<svg viewBox="0 0 '+width+' '+height+'" style="width:100%;height:auto;display:block">';
+  [0,25,50,75,100].forEach(v => {
+    const y = padTop + plotH - (v/100)*plotH;
+    svg += '<line x1="'+padLeft+'" y1="'+y+'" x2="'+(width-padRight)+'" y2="'+y+'" stroke="#e2e8f0" stroke-width="1"/>';
+    svg += '<text x="'+(padLeft-8)+'" y="'+(y+4)+'" font-size="10" fill="#64748b" text-anchor="end">'+v+'%</text>';
+  });
+  if(points.length > 1) {
+    const linePath = points.map((p,i) => (i===0?'M':'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+    svg += '<path d="'+linePath+'" fill="none" stroke="#1e40af" stroke-width="2.5"/>';
+  }
+  points.forEach(p => {
+    const truncated = p.label.length > 10 ? p.label.slice(0,9)+'…' : p.label;
+    svg += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="5" fill="#1e40af"/>';
+    svg += '<text x="'+p.x.toFixed(1)+'" y="'+(p.y-12).toFixed(1)+'" font-size="11" fill="#1e40af" font-weight="700" text-anchor="middle">'+p.score+'%</text>';
+    svg += '<text x="'+p.x.toFixed(1)+'" y="'+(height-padBottom+18)+'" font-size="10" fill="#64748b" text-anchor="middle">'+truncated+'</text>';
+  });
+  svg += '</svg>';
+  return svg;
+}
+
+function backToMyPaper() {
+  clearInterval(timerInterval);
+  stopUnloadProtection();
+  document.getElementById('timerBox').classList.add('hidden');
+  ['warningScreen','overtimeWarningScreen','quizScreen','resultsScreen'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  if(isLocalDemo) {
+    isLocalDemo = false;
+    localDemoSub = null;
+    document.getElementById('loginCard').classList.remove('hidden');
+    document.getElementById('testModeCard').classList.remove('hidden');
+    return;
+  }
+  document.getElementById('studentHomeCard').classList.remove('hidden');
+  switchHomeTab('papers');
+  renderMyPaperCard();
+}
+
+// ---- TEMPORARY TEST MODE (bypasses login) ----
+function loadSetsForTestMode() {
+  if(!window.firebaseDB) { setTimeout(loadSetsForTestMode,100); return; }
+  const {ref,onValue,db} = window.firebaseDB;
+  onValue(ref(db,'homeworkSets'), snap => {
+    homeworkSets = snap.val() || {};
+    const sel = document.getElementById('testSetSelect');
+    const cur = sel.value;
+    const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+    if(entries.length === 0) {
+      sel.innerHTML = '<option value="">-- no homework sets yet, create one in Admin first --</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">-- choose a set to preview --</option>';
+    entries.forEach(([id,s]) => {
+      const opt = document.createElement('option');
+      opt.value = id; opt.textContent = s.title + ' (' + s.totalQuestions + 'q)';
+      sel.appendChild(opt);
+    });
+    if(cur) sel.value = cur;
+  });
+}
+
+function enterTestMode() {
+  const code = document.getElementById('testCodeInput').value.trim() || 'test1';
+  const setId = document.getElementById('testSetSelect').value;
+  if(!setId) {
+    const el = document.getElementById('testModeMsg');
+    el.textContent = 'Please choose a homework set first (create one in the Admin page if the list is empty)';
+    el.className = 'msg error';
+    return;
+  }
+  studentCode = code;
+  studentRecord = { name: 'Test Student (' + code + ')' };
+  isTestModeAllSets = true; // test mode shows every existing set, ignoring real approvals
+  document.getElementById('testModeCard').classList.add('hidden');
+  document.getElementById('loginCard').classList.add('hidden');
+  enterStudentHome();
+}
+
+
+async function openSet(setId) {
+  currentSetId = setId;
+  currentSet = homeworkSets[setId];
+  const {ref,get,db} = window.firebaseDB;
+  const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
+  const sub = snap.exists() ? snap.val() : null;
+
+  document.getElementById('studentHomeCard').classList.add('hidden');
+
+  if(!sub || !sub.startedAt) {
+    // brand new — show warning screen
+    document.getElementById('startTitle').textContent = currentSet.title;
+    document.getElementById('startMeta').textContent = currentSet.totalQuestions + ' questions • ' + currentSet.timeLimitMinutes + ' minute time limit • Options A–' + optionLetter(currentSet.optionsCount);
+    showPaperReadiness();
+    document.getElementById('warningScreen').classList.remove('hidden');
+    return;
+  }
+
+  if(sub.timedSubmittedAt) {
+    // timed already finalized
+    if(sub.overtimeSubmittedAt) {
+      showResults(sub, true);
+    } else {
+      showResults(sub, false);
+      document.getElementById('continueOvertimeBtn').classList.remove('hidden');
+    }
+    return;
+  }
+
+  // started but not finalized — check if time has expired while away
+  const elapsedSec = Math.floor((Date.now() - sub.startedAt) / 1000);
+  const limitSec = currentSet.timeLimitMinutes * 60;
+  currentAnswers = sub.draftAnswers || {};
+
+  if(elapsedSec >= limitSec) {
+    // time expired while away — finalize timed using draft, then go overtime
+    await finalizeTimed(sub.startedAt + limitSec*1000);
+    document.getElementById('overtimeWarningScreen').classList.remove('hidden');
+  } else {
+    // resume timed session with remaining time
+    remainingSeconds = limitSec - elapsedSec;
+    currentMode = 'timed';
+    timedFinalized = false;
+    flaggedQuestions = new Set();
+    setupExam('resume');
+    document.getElementById('quizScreen').classList.remove('hidden');
+    document.getElementById('timerBox').classList.remove('hidden');
+    startTimer();
+  }
+}
+
+function optionLetter(n) { return 'ABCDEFGH'[n-1]; }
+
+function logEvent(type, extra) {
+  // Timestamped audit trail: when the student confirmed start, every answer
+  // change, and when they confirmed submit. Skipped in local demo mode since
+  // that mode promises nothing gets saved anywhere.
+  if(isLocalDemo || !window.firebaseDB) return;
+  const {ref,push,db} = window.firebaseDB;
+  const entry = Object.assign({ type, ts: Date.now() }, extra || {});
+  push(ref(db,'submissions/'+currentSetId+'/'+studentCode+'/log'), entry).catch(()=>{});
+}
+
+function showPaperReadiness() {
+  const msgEl = document.getElementById('startWarnMsg');
+  if(currentSet.paperUrl) {
+    msgEl.className = 'msg';
+  } else {
+    msgEl.textContent = '⚠️ No paper link has been added for this set yet — check with Dr Jon before starting.';
+    msgEl.className = 'msg error';
+  }
+}
+
+function openPaperLink() {
+  if(currentSet && currentSet.paperUrl) window.open(currentSet.paperUrl, '_blank');
+}
+
+async function beginTimedTest() {
+  // Open the paper FIRST, synchronously, as the very first thing this click
+  // handler does — mobile/desktop popup blockers only allow window.open()
+  // when it's called directly inside a user gesture, before any 'await'.
+  let paperTab = null;
+  if(currentSet.paperUrl) {
+    paperTab = window.open(currentSet.paperUrl, '_blank');
+    if(!paperTab) {
+      document.getElementById('startWarnMsg').textContent = '⚠️ Your browser blocked the paper from opening automatically. Tap "📄 Open Paper" once the timer starts to open it manually.';
+      document.getElementById('startWarnMsg').className = 'msg error';
+    }
+  }
+
+  const startedAt = Date.now();
+  if(isLocalDemo) {
+    localDemoSub = { studentCode, startedAt, draftAnswers: {} };
+  } else {
+    const {ref,set,db} = window.firebaseDB;
+    await set(ref(db,'submissions/'+currentSetId+'/'+studentCode), {
+      studentCode, startedAt, draftAnswers: {}
+    });
+  }
+  currentAnswers = {};
+  currentMode = 'timed';
+  timedFinalized = false;
+  flaggedQuestions = new Set();
+  remainingSeconds = currentSet.timeLimitMinutes * 60;
+  logEvent('confirm_start', { paperOpened: !!paperTab, timeLimitMinutes: currentSet.timeLimitMinutes });
+  document.getElementById('warningScreen').classList.add('hidden');
+  setupExam('reset');
+  document.getElementById('quizScreen').classList.remove('hidden');
+  document.getElementById('timerBox').classList.remove('hidden');
+  startTimer();
+}
+
+function beginOvertime() {
+  // Continuing straight on from a timed session that just ran out of time —
+  // stay on the question the student was already looking at.
+  document.getElementById('overtimeWarningScreen').classList.add('hidden');
+  currentMode = 'overtime';
+  flaggedQuestions = new Set();
+  logEvent('confirm_start_overtime');
+  document.getElementById('overtimeBanner').classList.remove('hidden');
+  document.getElementById('timesUpBanner').classList.add('hidden');
+  setupExam('keep');
+  document.getElementById('quizScreen').classList.remove('hidden');
+}
+
+function goToOvertime() {
+  document.getElementById('resultsScreen').classList.add('hidden');
+  currentAnswers = {};
+  currentMode = 'overtime';
+  flaggedQuestions = new Set();
+  logEvent('confirm_start_overtime');
+  document.getElementById('overtimeBanner').classList.remove('hidden');
+  document.getElementById('timesUpBanner').classList.add('hidden');
+  setupExam('reset');
+  document.getElementById('quizScreen').classList.remove('hidden');
+}
+
+let timerDeadline = null;
+
+function startTimer() {
+  // Use an absolute deadline timestamp rather than a plain decrementing counter.
+  // setInterval alone drifts (or gets throttled while the tab is backgrounded),
+  // so every tick recomputes remaining time from Date.now() vs the deadline —
+  // this keeps the timer accurate even if the tab was hidden for a while.
+  timerDeadline = Date.now() + remainingSeconds * 1000;
+  tickTimer();
+  timerInterval = setInterval(tickTimer, 1000);
+  window.addEventListener('beforeunload', beforeUnloadHandler);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+}
+
+function tickTimer() {
+  if(timerDeadline === null) return;
+  remainingSeconds = Math.max(0, Math.round((timerDeadline - Date.now()) / 1000));
+  updateTimerDisplay();
+  if(remainingSeconds <= 0) {
+    clearInterval(timerInterval);
+    stopUnloadProtection();
+    finalizeTimed(timerDeadline);
+  }
+}
+
+function onVisibilityChange() {
+  // Recheck immediately when the student comes back to the tab, so a long
+  // period in the background doesn't leave a stale timer on screen.
+  if(document.visibilityState === 'visible' && timerDeadline !== null) tickTimer();
+}
+
+function beforeUnloadHandler(e) {
+  if(currentMode === 'timed' && !timedFinalized) {
+    e.preventDefault();
+    e.returnValue = 'Your timed attempt is still running. Leaving now will not pause the clock.';
+    return e.returnValue;
+  }
+}
+
+function stopUnloadProtection() {
+  window.removeEventListener('beforeunload', beforeUnloadHandler);
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+  timerDeadline = null;
+}
+
+function updateTimerDisplay() {
+  const box = document.getElementById('timerBox');
+  const m = Math.max(0, Math.floor(remainingSeconds/60));
+  const s = Math.max(0, remainingSeconds%60);
+  box.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  box.className = 'exam-timer-inline' + (remainingSeconds<=60 ? ' danger' : remainingSeconds<=300 ? ' warn' : '');
+}
+
+function setupExam(mode) {
+  // mode: 'reset' -> start at Question 1
+  //       'resume' -> jump to the first unanswered question (picking up a saved session)
+  //       'keep' -> leave currentQIndex exactly where it was (continuing straight into overtime)
+  if(mode === 'reset') {
+    currentQIndex = 0;
+  } else if(mode === 'resume') {
+    currentQIndex = 0;
+    for(let q=1; q<=currentSet.totalQuestions; q++) {
+      if(!currentAnswers[q]) { currentQIndex = q-1; break; }
+    }
+  }
+  renderCurrentQuestion();
+}
+
+function renderCurrentQuestion() {
+  const total = currentSet.totalQuestions;
+  const q = currentQIndex + 1;
+
+  document.getElementById('examTitle').textContent = currentSet.title;
+  document.getElementById('qCounterText').textContent = 'Q' + q + ' of ' + total;
+  document.getElementById('examQNum').textContent = 'Question ' + q;
+
+  let opts = '';
+  for(let i=1; i<=currentSet.optionsCount; i++) {
+    const letter = optionLetter(i);
+    const id = 'examopt_'+letter;
+    const checked = currentAnswers[q] === letter ? 'checked' : '';
+    opts += '<label class="examopt-row" for="'+id+'"><input type="radio" name="examq" id="'+id+'" value="'+letter+'" '+checked+' onchange="setAnswer(\''+letter+'\')"><span class="examopt-radio"></span><span class="examopt-label">Option '+letter+'</span></label>';
+  }
+  document.getElementById('examOptions').innerHTML = opts;
+
+  const flagBtn = document.getElementById('flagBtn');
+  flagBtn.classList.toggle('active', flaggedQuestions.has(q));
+  flagBtn.textContent = flaggedQuestions.has(q) ? '⚑ Flagged' : '⚑ Flag for Review';
+
+  document.getElementById('paperLinkBtn').classList.toggle('hidden', !currentSet.paperUrl);
+
+  document.getElementById('prevBtn').disabled = (q === 1);
+  const nextBtn = document.getElementById('nextBtn');
+  nextBtn.textContent = (q === total) ? 'Review & Submit ✓' : 'Next →';
+
+  const chromeEl = document.querySelector('.exam-chrome');
+  if(chromeEl) window.scrollTo({top: 0, behavior: 'instant'});
+}
+
+function toggleFlag() {
+  const q = currentQIndex + 1;
+  if(flaggedQuestions.has(q)) flaggedQuestions.delete(q); else flaggedQuestions.add(q);
+  renderCurrentQuestion();
+}
+
+function goNextQuestion() {
+  const total = currentSet.totalQuestions;
+  if(currentQIndex < total - 1) {
+    currentQIndex++;
+    renderCurrentQuestion();
+  } else {
+    openSubmitConfirm();
+  }
+}
+
+function goPrevQuestion() {
+  if(currentQIndex > 0) {
+    currentQIndex--;
+    renderCurrentQuestion();
+  }
+}
+
+function jumpToQuestion(idx) {
+  currentQIndex = idx;
+  closeNavigator();
+  renderCurrentQuestion();
+}
+
+function openNavigator() {
+  const total = currentSet.totalQuestions;
+  let html = '';
+  for(let q=1; q<=total; q++) {
+    const answered = !!currentAnswers[q];
+    const isCurrent = (q === currentQIndex+1);
+    const isFlagged = flaggedQuestions.has(q);
+    html += '<div class="nav-cell'+(answered?' answered':'')+(isCurrent?' current':'')+(isFlagged?' flagged':'')+'" onclick="jumpToQuestion('+(q-1)+')">'+q+'</div>';
+  }
+  document.getElementById('navGrid').innerHTML = html;
+  const answeredCount = Object.keys(currentAnswers).filter(q => currentAnswers[q]).length;
+  document.getElementById('navSummary').textContent = answeredCount + ' of ' + total + ' answered · ' + flaggedQuestions.size + ' flagged · ' + (total-answeredCount) + ' unanswered';
+  document.getElementById('navigatorModal').classList.add('show');
+}
+
+function closeNavigator() {
+  document.getElementById('navigatorModal').classList.remove('show');
+}
+
+function setAnswer(letter) {
+  const q = currentQIndex + 1;
+  currentAnswers[q] = letter;
+  logEvent('answer', { question: q, answer: letter, mode: currentMode });
+  if(currentMode === 'timed') {
+    if(isLocalDemo) {
+      if(localDemoSub) localDemoSub.draftAnswers = currentAnswers;
+    } else {
+      const {ref,update,db} = window.firebaseDB;
+      update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
+    }
+  }
+}
+
+function computeScore(answers) {
+  let score = 0;
+  const total = currentSet.totalQuestions;
+  for(let q=1; q<=total; q++) {
+    if(answers[q] && currentSet.answerKey[q] === answers[q]) score++;
+  }
+  return { score, total, pct: Math.round((score/total)*1000)/10 };
+}
+
+async function finalizeTimed(finalizedAt) {
+  if(timedFinalized) return;
+  timedFinalized = true;
+  clearInterval(timerInterval);
+  stopUnloadProtection();
+  const { score, total, pct } = computeScore(currentAnswers);
+  const fields = { timedAnswers: currentAnswers, timedSubmittedAt: finalizedAt, timedScore: score, timedTotal: total, timedPercentage: pct };
+  if(isLocalDemo) {
+    localDemoSub = Object.assign(localDemoSub || {}, fields);
+  } else {
+    const {ref,update,db} = window.firebaseDB;
+    await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+  }
+  document.getElementById('timerBox').classList.add('hidden');
+  document.getElementById('timesUpBanner').classList.remove('hidden');
+  currentMode = 'overtime';
+}
+
+// ---- Submit confirmation step ----
+function openSubmitConfirm() {
+  const total = currentSet.totalQuestions;
+  const answeredCount = Object.keys(currentAnswers).filter(q => currentAnswers[q]).length;
+  const unanswered = [];
+  for(let q=1; q<=total; q++) if(!currentAnswers[q]) unanswered.push(q);
+
+  const banner = document.getElementById('submitConfirmBanner');
+  if(unanswered.length > 0) {
+    banner.innerHTML = '<div class="confirm-unanswered">⚠️ You have <strong>' + unanswered.length + ' unanswered</strong> question(s): Q' + unanswered.join(', Q') + '. You can go back and answer them, or submit as-is.</div>';
+  } else {
+    banner.innerHTML = '<div class="confirm-ready">✅ You have answered all ' + total + ' questions. Ready to submit.</div>';
+  }
+  document.getElementById('submitConfirmModal').classList.add('show');
+}
+
+function closeSubmitConfirm() {
+  document.getElementById('submitConfirmModal').classList.remove('show');
+}
+
+async function confirmSubmit() {
+  const total = currentSet.totalQuestions;
+  const answeredCount = Object.keys(currentAnswers).filter(q => currentAnswers[q]).length;
+  logEvent('confirm_submit', { mode: currentMode, answeredCount, totalQuestions: total });
+  closeSubmitConfirm();
+  await doSubmit();
+}
+
+async function doSubmit() {
+  if(currentMode === 'timed' && !timedFinalized) {
+    await finalizeTimed(Date.now());
+    const sub = isLocalDemo ? localDemoSub : (await window.firebaseDB.get(window.firebaseDB.ref(window.firebaseDB.db,'submissions/'+currentSetId+'/'+studentCode))).val();
+    showResults(sub, false);
+    document.getElementById('quizScreen').classList.add('hidden');
+    document.getElementById('continueOvertimeBtn').classList.remove('hidden');
+    return;
+  }
+  // overtime submit
+  const { score, total, pct } = computeScore(currentAnswers);
+  const fields = { overtimeAnswers: currentAnswers, overtimeSubmittedAt: Date.now(), overtimeScore: score, overtimeTotal: total, overtimePercentage: pct };
+  let sub;
+  if(isLocalDemo) {
+    localDemoSub = Object.assign(localDemoSub || {}, fields);
+    sub = localDemoSub;
+  } else {
+    const {ref,update,get,db} = window.firebaseDB;
+    await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+    sub = (await get(ref(db,'submissions/'+currentSetId+'/'+studentCode))).val();
+  }
+  document.getElementById('quizScreen').classList.add('hidden');
+  showResults(sub, true);
+  document.getElementById('continueOvertimeBtn').classList.add('hidden');
+}
+
+function showResults(sub, showOvertimeToo) {
+  // Always use the live answer key (currentSet reflects the latest onValue
+  // snapshot) rather than the score fields written at submission time — if
+  // the tutor corrects a mistake in the key later, results shown here stay
+  // accurate without needing a manual fix per student.
+  const liveSet = homeworkSets[currentSetId] || currentSet;
+  const timedLive = computeScoreAgainst(sub.timedAnswers, liveSet);
+  const keyChanged = sub.timedScore !== timedLive.score;
+
+  document.getElementById('resultsTitle').textContent = liveSet.title + ' — Results';
+  let summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>';
+  if(keyChanged) summaryHtml += '<div class="recalc-note">Recalculated against the current answer key</div>';
+
+  if(sub.overtimeSubmittedAt) {
+    const overtimeLive = computeScoreAgainst(sub.overtimeAnswers, liveSet);
+    summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + timedLive.pct + '%</div><div class="l">Timed</div></div><div class="score-box"><div class="n">' + overtimeLive.pct + '%</div><div class="l">Overtime</div></div></div>';
+  }
+  document.getElementById('scoreSummary').innerHTML = summaryHtml;
+
+  const noteEl = document.createElement('div');
+  noteEl.className = 'submitted-note';
+  noteEl.innerHTML = '✅ Your submission has been recorded. There is no automatic notification sent to Dr Jon — but your answers and score are already saved and visible to him.';
+  document.getElementById('scoreSummary').appendChild(noteEl);
+
+  let breakdownHtml = '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet) + '</div>';
+  if(sub.overtimeSubmittedAt) {
+    breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Overtime attempt — question breakdown</h2>' + buildBreakdown(sub.overtimeAnswers, liveSet) + '</div>';
+  }
+  document.getElementById('breakdownContainer').innerHTML = breakdownHtml;
+  document.getElementById('resultsScreen').classList.remove('hidden');
+}
+
+function computeScoreAgainst(answers, set) {
+  answers = answers || {};
+  let score = 0;
+  const total = set.totalQuestions;
+  for(let q=1; q<=total; q++) {
+    if(answers[q] && set.answerKey[q] === answers[q]) score++;
+  }
+  return { score, total, pct: Math.round((score/total)*1000)/10 };
+}
+
+function buildBreakdown(answers, set) {
+  set = set || currentSet;
+  answers = answers || {};
+  let html = '';
+  for(let q=1; q<=set.totalQuestions; q++) {
+    const given = answers[q] || '—';
+    const correct = set.answerKey[q];
+    const isCorrect = given === correct;
+    html += '<div class="qblock review ' + (isCorrect?'correct':'incorrect') + '"><span class="verdict ' + (isCorrect?'ok':'no') + '">' + (isCorrect?'✓ Correct':'✗ Incorrect') + '</span><div class="qnum">Question ' + q + '</div><div>Your answer: <strong>' + given + '</strong></div>' + (isCorrect?'':'<div class="correct-ans">Correct answer: ' + correct + '</div>') + '</div>';
+  }
+  return html;
+}
+
+loadSetsForTestMode();
+
+</script>
+</body>
+</html>
