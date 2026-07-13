@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dr Jon's TMUA & ESAT Practice Portal</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#1e40af">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TMUA/ESAT">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,900&display=swap" rel="stylesheet">
 <script type="module">
@@ -248,6 +256,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
     <p class="sub" id="startMeta">—</p>
     <div class="msg" id="startWarnMsg"></div>
     <button class="btn" onclick="beginTimedTest()">✓ Start Timer & Open My Paper</button>
+    <p class="sub" style="text-align:center;margin-top:10px">📄 This opens your paper in a <strong>new browser tab</strong> — it is not a download. If nothing appears, check your other browser tabs (or your pop-up blocker).</p>
   </div>
 </div>
 
@@ -461,11 +470,12 @@ async function renderMyProgress() {
   const avgPct = Math.round(rows.reduce((sum,r) => sum + computeScoreAgainstSet(r.sub.timedAnswers, r.set).pct, 0) / rows.length * 10) / 10;
   chartEl.innerHTML = '<div class="progress-score-summary"><div class="big">'+avgPct+'%</div><div class="small">Average across '+rows.length+' completed paper'+(rows.length>1?'s':'')+'</div></div>' + buildProgressChartSvg(rows);
 
-  let tableHtml = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase"><th style="padding:8px 4px">Paper</th><th style="padding:8px 4px">Date</th><th style="padding:8px 4px;text-align:right">Score</th></tr></thead><tbody>';
+  let tableHtml = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase"><th style="padding:8px 4px">Paper</th><th style="padding:8px 4px">Date</th><th style="padding:8px 4px;text-align:right">Score</th><th style="padding:8px 4px;text-align:right">Grade</th></tr></thead><tbody>';
   rows.slice().reverse().forEach(({set, sub}) => {
     const live = computeScoreAgainstSet(sub.timedAnswers, set);
     const date = new Date(sub.timedSubmittedAt).toLocaleDateString('en-GB');
-    tableHtml += '<tr style="border-top:1px solid var(--line)"><td style="padding:9px 4px;font-weight:700">'+set.title+'</td><td style="padding:9px 4px;color:var(--muted)">'+date+'</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+live.pct+'%</td></tr>';
+    const grade = computeGrade(live.score, set.gradeBoundaries);
+    tableHtml += '<tr style="border-top:1px solid var(--line)"><td style="padding:9px 4px;font-weight:700">'+set.title+'</td><td style="padding:9px 4px;color:var(--muted)">'+date+'</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+live.pct+'%</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+(grade!==null?grade:'—')+'</td></tr>';
   });
   tableHtml += '</tbody></table>';
   tableEl.innerHTML = tableHtml;
@@ -965,16 +975,20 @@ function showResults(sub, showOvertimeToo) {
   const keyChanged = sub.timedScore !== timedLive.score;
 
   document.getElementById('resultsTitle').textContent = liveSet.title + ' — Results';
+  const timedGrade = computeGrade(timedLive.score, liveSet.gradeBoundaries);
   let summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>';
+  if(timedGrade !== null) summaryHtml += '<div class="frac" style="font-weight:800;color:var(--brand);margin-top:2px">Estimated grade: ' + timedGrade + '</div>';
   if(keyChanged) summaryHtml += '<div class="recalc-note">Recalculated against the current answer key</div>';
 
   if(sub.overtimeSubmittedAt) {
     const overtimeLive = computeScoreAgainst(sub.overtimeAnswers, liveSet);
-    summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + timedLive.pct + '%</div><div class="l">Timed</div></div><div class="score-box"><div class="n">' + overtimeLive.pct + '%</div><div class="l">Overtime</div></div></div>';
+    const overtimeGrade = computeGrade(overtimeLive.score, liveSet.gradeBoundaries);
+    summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + timedLive.pct + '%</div><div class="l">Timed' + (timedGrade!==null?' · '+timedGrade:'') + '</div></div><div class="score-box"><div class="n">' + overtimeLive.pct + '%</div><div class="l">Overtime' + (overtimeGrade!==null?' · '+overtimeGrade:'') + '</div></div></div>';
   }
   if(sub.reattemptSubmittedAt) {
     const reattemptLive = computeScoreAgainst(sub.reattemptAnswers, liveSet);
-    summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + reattemptLive.pct + '%</div><div class="l">Latest Reattempt (practice)</div></div></div>';
+    const reattemptGrade = computeGrade(reattemptLive.score, liveSet.gradeBoundaries);
+    summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + reattemptLive.pct + '%</div><div class="l">Latest Reattempt (practice)' + (reattemptGrade!==null?' · '+reattemptGrade:'') + '</div></div></div>';
   }
   document.getElementById('scoreSummary').innerHTML = summaryHtml;
 
@@ -1003,6 +1017,16 @@ function computeScoreAgainst(answers, set) {
     if(answers[q] && set.answerKey[q] === answers[q]) score++;
   }
   return { score, total, pct: Math.round((score/total)*1000)/10 };
+}
+
+// gradeBoundaries: [{min: <correct answers needed>, grade: <label>}, ...],
+// set by Dr Jon (AI-drafted, rough estimate only). Returns the grade for
+// the highest boundary the score meets, or null if none are set.
+function computeGrade(score, gradeBoundaries) {
+  if(!gradeBoundaries || !gradeBoundaries.length) return null;
+  const sorted = gradeBoundaries.slice().sort((a,b) => b.min - a.min);
+  for(const b of sorted) { if(score >= b.min) return b.grade; }
+  return null;
 }
 
 function buildBreakdown(answers, set) {

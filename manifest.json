@@ -1,0 +1,13 @@
+{
+  "name": "Dr Jon's TMUA & ESAT Practice Portal",
+  "short_name": "TMUA/ESAT",
+  "start_url": "dr_jon_tmua_esat_student.html",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1e40af",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

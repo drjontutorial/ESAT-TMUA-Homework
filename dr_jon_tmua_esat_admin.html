@@ -279,6 +279,16 @@ tbody tr:hover{background:#f8fafc}
           <div id="importPreviewContainer"></div>
         </div>
 
+        <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:14px;margin-bottom:14px">
+          <div style="font-weight:800;font-size:13px;color:#1e3a8a;margin-bottom:6px">🎯 Grade Boundaries (optional)</div>
+          <p style="font-size:12px;color:#1e3a8a;margin-bottom:10px">Get another Claude chat to generate rough grade boundaries for this paper, then paste its reply below — one line per boundary, as <code>minimum correct,grade</code> (e.g. "18,9.0"), from highest to lowest. Used to show a rough grade alongside the raw score for both you and the student — it's an estimate, not an official mark.</p>
+          <button class="btn btn-ghost" onclick="copyGradeBoundaryPrompt()">🤖 Copy Prompt for Claude</button>
+          <textarea id="gradeBoundaryText" placeholder="18,9.0&#10;16,8.5&#10;14,8.0&#10;12,7.5&#10;10,7.0&#10;8,6.5&#10;6,6.0&#10;0,5.5" style="width:100%;min-height:90px;margin-top:10px;padding:10px;border:1.5px solid var(--line);border-radius:10px;font-family:monospace;font-size:13px"></textarea>
+          <button class="btn btn-primary" style="margin-top:10px" onclick="previewGradeBoundaries()">👀 Preview Boundaries</button>
+          <div id="gradeBoundaryPreviewContainer"></div>
+          <div id="currentGradeBoundariesContainer" style="margin-top:10px"></div>
+        </div>
+
         <h2 style="font-size:15px;margin-top:10px">Answer Key (manual entry / review)</h2>
         <div class="key-grid" id="keyGrid"></div>
         <div style="display:flex;gap:10px;margin-top:10px">
@@ -321,6 +331,8 @@ let lastLoadedDetailSubs = {}; // { setId: submissionDoc } for the student curre
 let currentDetailCode = null;
 let lastOutstanding = null; // { setId, codes, title } for the reminder-message generator
 let editAnswersMode = 'timed'; // 'timed' | 'overtime' — which attempt is being manually edited
+let currentGradeBoundaries = []; // [{min, grade}, ...] for the paper currently being created/edited
+let pendingGradeBoundaries = null; // parsed-but-not-yet-applied preview of a pasted grade boundary list
 let editingStudentCode = null;
 let currentResultsSetId = null;
 
@@ -589,6 +601,81 @@ function cancelImportPreview() {
   document.getElementById('importPreviewContainer').innerHTML = '';
 }
 
+// ---- Grade boundaries (optional, AI-drafted rough grade per raw score) ----
+function copyGradeBoundaryPrompt() {
+  const total = parseInt(document.getElementById('setTotalQ').value) || 27;
+  const paperType = document.getElementById('setPaperType').value === 'tmua' ? 'TMUA' : 'ESAT';
+  const prompt = 'Please give me rough grade boundaries for a ' + total + '-question ' + paperType + ' practice paper.\n\nReply with ONLY one line per boundary, formatted as:\n<minimum number of correct answers needed for this grade>,<grade label>\n\nList them from the highest grade down to the lowest, and make sure the lowest line starts at 0 so every possible score maps to a grade. For example (numbers are illustrative only):\n\n18,9.0\n16,8.5\n14,8.0\n12,7.5\n10,7.0\n8,6.5\n6,6.0\n0,5.5\n\nJust the lines, nothing else — no explanation, no headers.';
+  navigator.clipboard.writeText(prompt).then(() => {
+    alert('✅ Prompt copied! Paste it into another Claude chat, get the boundaries back, then paste that reply into the box below.');
+  }).catch(() => {
+    window.prompt('Copy this prompt manually:', prompt);
+  });
+}
+
+function parseGradeBoundaryText(raw) {
+  return raw.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => {
+      const parts = line.split(',').map(p => p.trim());
+      if(parts.length < 2) return null;
+      const min = parseInt(parts[0]);
+      const grade = parts.slice(1).join(',');
+      if(isNaN(min) || !grade) return null;
+      return { min, grade };
+    })
+    .filter(b => b !== null)
+    .sort((a,b) => b.min - a.min);
+}
+
+function previewGradeBoundaries() {
+  const raw = document.getElementById('gradeBoundaryText').value;
+  const parsed = parseGradeBoundaryText(raw);
+  const container = document.getElementById('gradeBoundaryPreviewContainer');
+
+  if(parsed.length === 0) {
+    container.innerHTML = '<div class="edit-warning">⚠️ No valid boundary lines found — expected format is <code>minimum correct,grade</code> per line.</div>';
+    pendingGradeBoundaries = null;
+    return;
+  }
+
+  pendingGradeBoundaries = parsed;
+  let rows = parsed.map(b => '<div class="qrow correct"><span>' + b.min + '+ correct</span><span><strong>' + b.grade + '</strong></span></div>').join('');
+  let html = '<div style="max-height:220px;overflow-y:auto;margin:10px 0;background:#fff;border-radius:10px;padding:6px">' + rows + '</div>';
+  html += '<div style="display:flex;gap:10px"><button class="btn btn-green" style="flex:1" onclick="applyGradeBoundaries()">✅ Apply Boundaries</button><button class="btn btn-ghost" style="flex:1" onclick="cancelGradeBoundaryPreview()">Cancel</button></div>';
+  container.innerHTML = html;
+}
+
+function applyGradeBoundaries() {
+  if(!pendingGradeBoundaries) return;
+  currentGradeBoundaries = pendingGradeBoundaries;
+  pendingGradeBoundaries = null;
+  document.getElementById('gradeBoundaryPreviewContainer').innerHTML = '<div class="confirm-ready" style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600">✅ Applied ' + currentGradeBoundaries.length + ' grade boundaries. They\'ll be saved with this paper when you click "💾 Save Set".</div>';
+  document.getElementById('gradeBoundaryText').value = '';
+  renderCurrentGradeBoundariesTable();
+}
+
+function cancelGradeBoundaryPreview() {
+  pendingGradeBoundaries = null;
+  document.getElementById('gradeBoundaryPreviewContainer').innerHTML = '';
+}
+
+function renderCurrentGradeBoundariesTable() {
+  const container = document.getElementById('currentGradeBoundariesContainer');
+  if(!currentGradeBoundaries.length) { container.innerHTML = ''; return; }
+  let rows = currentGradeBoundaries.map(b => '<div class="qrow correct"><span>' + b.min + '+ correct</span><span><strong>' + b.grade + '</strong></span></div>').join('');
+  container.innerHTML = '<div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px">Currently set for this paper:</div>'
+    + '<div style="max-height:220px;overflow-y:auto;background:#fff;border-radius:10px;padding:6px">' + rows + '</div>'
+    + '<button class="btn btn-ghost" style="margin-top:8px" onclick="clearGradeBoundaries()">🗑️ Clear Grade Boundaries</button>';
+}
+
+function clearGradeBoundaries() {
+  if(!confirm('Remove the grade boundaries from this paper? Raw scores will still show, just no grade estimate.')) return;
+  currentGradeBoundaries = [];
+  renderCurrentGradeBoundariesTable();
+}
+
 function saveSet() {
   const title = document.getElementById('setTitle').value.trim();
   const paperType = document.getElementById('setPaperType').value;
@@ -615,7 +702,7 @@ function saveSet() {
   }
 
   const {ref,set,push,db} = window.firebaseDB;
-  const payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+  const payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, gradeBoundaries: currentGradeBoundaries, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
 
   const setId = editingSetId || push(ref(db,'homeworkSets')).key;
   set(ref(db,'homeworkSets/'+setId), payload).then(() => {
@@ -635,6 +722,11 @@ function cancelEdit() {
   document.getElementById('setOptionsCount').value = 8;
   document.getElementById('setTimeLimit').value = 40;
   document.getElementById('setPaperUrl').value = '';
+  currentGradeBoundaries = [];
+  pendingGradeBoundaries = null;
+  document.getElementById('gradeBoundaryText').value = '';
+  document.getElementById('gradeBoundaryPreviewContainer').innerHTML = '';
+  renderCurrentGradeBoundariesTable();
   rebuildKeyGrid();
 }
 
@@ -650,6 +742,11 @@ async function editSet(setId) {
   document.getElementById('setOptionsCount').value = s.optionsCount;
   document.getElementById('setTimeLimit').value = s.timeLimitMinutes;
   document.getElementById('setPaperUrl').value = s.paperUrl || '';
+  currentGradeBoundaries = s.gradeBoundaries || [];
+  pendingGradeBoundaries = null;
+  document.getElementById('gradeBoundaryText').value = '';
+  document.getElementById('gradeBoundaryPreviewContainer').innerHTML = '';
+  renderCurrentGradeBoundariesTable();
   rebuildKeyGrid();
   for(let q=1; q<=s.totalQuestions; q++) {
     if(s.answerKey && s.answerKey[q]) {
@@ -728,6 +825,16 @@ function computeScoreAgainst(answers, set) {
   return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0 };
 }
 
+// gradeBoundaries: [{min: <correct answers needed>, grade: <label>}, ...].
+// Returns the grade for the highest boundary the score meets, or null if
+// no boundaries are set for this paper or the score is below all of them.
+function computeGrade(score, gradeBoundaries) {
+  if(!gradeBoundaries || !gradeBoundaries.length) return null;
+  const sorted = gradeBoundaries.slice().sort((a,b) => b.min - a.min);
+  for(const b of sorted) { if(score >= b.min) return b.grade; }
+  return null;
+}
+
 let resultsSearchTerm = '';
 
 function renderResults(setId) {
@@ -798,13 +905,15 @@ function renderResults(setId) {
     return x.code.toLowerCase().includes(term) || name.includes(term);
   });
 
-  html += '<div class="card"><table><thead><tr><th>Code</th><th>Name</th><th>Timed Score</th><th>Timed %</th><th>Overtime %</th><th>Submitted</th></tr></thead><tbody>';
+  html += '<div class="card"><table><thead><tr><th>Code</th><th>Name</th><th>Timed Score</th><th>Timed %</th><th>Grade</th><th>Overtime %</th><th>Submitted</th></tr></thead><tbody>';
   filtered.sort((a,b) => b.live.pct - a.live.pct).forEach(({code, s, live, overtimeLive, stale}) => {
     const name = studentName(code) || '—';
     const pillClass = live.pct>=70?'good':live.pct>=50?'mid':'bad';
+    const grade = computeGrade(live.score, set.gradeBoundaries);
+    const gradeCell = grade !== null ? '<span class="pill mid">'+grade+'</span>' : '—';
     const overtimeCell = overtimeLive ? '<span class="pill mid">'+overtimeLive.pct+'%</span>' : '<span class="pill pending">—</span>';
     const ts = new Date(s.timedSubmittedAt).toLocaleString('en-GB');
-    html += '<tr onclick="showBreakdown(\''+code+'\')"><td><strong>'+code+'</strong></td><td>'+name+'</td><td>'+live.score+' / '+live.total+(stale?'<span class="recalc-flag">recalculated</span>':'')+'</td><td><span class="pill '+pillClass+'">'+live.pct+'%</span></td><td>'+overtimeCell+'</td><td>'+ts+'</td></tr>';
+    html += '<tr onclick="showBreakdown(\''+code+'\')"><td><strong>'+code+'</strong></td><td>'+name+'</td><td>'+live.score+' / '+live.total+(stale?'<span class="recalc-flag">recalculated</span>':'')+'</td><td><span class="pill '+pillClass+'">'+live.pct+'%</span></td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td><td>'+ts+'</td></tr>';
   });
   html += '</tbody></table></div>';
 
@@ -1069,7 +1178,9 @@ function buildBreakdownSection(label, answers, set) {
     }
     rows += '<div class="qrow '+cls+'"><span>Q'+q+': answered <strong>'+(given||'—')+'</strong></span><span>'+verdict+'</span></div>';
   }
-  return '<h3 style="font-size:14px;margin:14px 0 8px;color:var(--brand)">'+label+' — '+correct+' / '+set.totalQuestions+' correct <span style="color:var(--muted);font-weight:600;font-size:12px">('+incorrect+' wrong, '+notAttempted+' not attempted)</span></h3>' + rows;
+  const grade = computeGrade(correct, set.gradeBoundaries);
+  const gradeText = grade !== null ? ' <span style="color:var(--brand);font-weight:800">— Grade: '+grade+'</span>' : '';
+  return '<h3 style="font-size:14px;margin:14px 0 8px;color:var(--brand)">'+label+' — '+correct+' / '+set.totalQuestions+' correct <span style="color:var(--muted);font-weight:600;font-size:12px">('+incorrect+' wrong, '+notAttempted+' not attempted)</span>'+gradeText+'</h3>' + rows;
 }
 
 function closeBreakdown() {
@@ -1288,15 +1399,17 @@ function renderStudentDetailTable(code, rows) {
     container.innerHTML = '<div class="empty">No papers attempted yet.</div>';
     return;
   }
-  let html = '<table><thead><tr><th>Paper</th><th>Started</th><th>Timed Submitted</th><th>Timed %</th><th>Overtime %</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>Paper</th><th>Started</th><th>Timed Submitted</th><th>Timed %</th><th>Grade</th><th>Overtime %</th></tr></thead><tbody>';
   rows.forEach(({setId, set, sub}) => {
     const started = sub.startedAt ? new Date(sub.startedAt).toLocaleString('en-GB') : '—';
     const submitted = sub.timedSubmittedAt ? new Date(sub.timedSubmittedAt).toLocaleString('en-GB') : '<span style="color:var(--gold)">not submitted</span>';
     const live = sub.timedSubmittedAt ? computeScoreAgainst(sub.timedAnswers, set) : null;
     const pillClass = live ? (live.pct>=70?'good':live.pct>=50?'mid':'bad') : null;
     const timedCell = live ? '<span class="pill '+pillClass+'">'+live.pct+'%</span>' : '—';
+    const grade = live ? computeGrade(live.score, set.gradeBoundaries) : null;
+    const gradeCell = grade !== null ? '<span class="pill mid">'+grade+'</span>' : '—';
     const overtimeCell = sub.overtimeSubmittedAt ? '<span class="pill mid">'+computeScoreAgainst(sub.overtimeAnswers, set).pct+'%</span>' : '<span class="pill pending">—</span>';
-    html += '<tr onclick="showBreakdownFor(\''+setId+'\',\''+code+'\')"><td><strong>'+set.title+'</strong></td><td>'+started+'</td><td>'+submitted+'</td><td>'+timedCell+'</td><td>'+overtimeCell+'</td></tr>';
+    html += '<tr onclick="showBreakdownFor(\''+setId+'\',\''+code+'\')"><td><strong>'+set.title+'</strong></td><td>'+started+'</td><td>'+submitted+'</td><td>'+timedCell+'</td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td></tr>';
   });
   html += '</tbody></table>';
   container.innerHTML = html;
