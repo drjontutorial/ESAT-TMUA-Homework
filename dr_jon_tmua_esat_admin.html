@@ -363,6 +363,11 @@ function loadData() {
     populateResultsSetSelect();
     populateSetDropdowns();
     if(document.getElementById('homeTab').style.display !== 'none') renderHomepage();
+    // Keep an already-open Performance → By Paper table in sync — otherwise
+    // saving new grade boundaries (or any other paper edit) leaves the
+    // visible results table showing stale data until the admin manually
+    // reselects the paper from the dropdown.
+    if(currentResultsSetId && homeworkSets[currentResultsSetId]) loadResultsForSet();
   });
   onValue(ref(db,'students'), snap => {
     students = snap.val() || {};
