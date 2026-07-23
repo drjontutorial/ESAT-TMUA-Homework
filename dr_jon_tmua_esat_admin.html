@@ -254,7 +254,7 @@ tbody tr:hover{background:#f8fafc}
         <div class="edit-warning hidden" id="editSubmissionWarning"></div>
         <div class="form-row">
           <div class="form-group"><label>Title</label><input type="text" id="setTitle" placeholder="e.g. TMUA Set 1"></div>
-          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">ESAT (27 questions)</option><option value="tmua">TMUA (20 questions)</option></select></div>
+          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">ESAT (27 questions)</option><option value="tmua">TMUA (20 questions)</option><option value="sat_math">SAT Math Module (22 questions)</option></select></div>
           <div class="form-group"><label>Total Questions</label><input type="number" id="setTotalQ" min="1" max="100" value="27" onchange="rebuildKeyGrid()"></div>
           <div class="form-group"><label>Options per Question</label>
             <select id="setOptionsCount" onchange="rebuildKeyGrid()">
@@ -514,10 +514,11 @@ function onPerfStudentSelected() {
 
 function updateQuestionCountFromPaperType() {
   const paperType = document.getElementById('setPaperType').value;
-  const questionCount = paperType === 'tmua' ? 20 : 27;
-  const timeLimit = paperType === 'tmua' ? 75 : 40;
+  const questionCount = paperType === 'tmua' ? 20 : paperType === 'sat_math' ? 22 : 27;
+  const timeLimit = paperType === 'tmua' ? 75 : paperType === 'sat_math' ? 35 : 40;
   document.getElementById('setTotalQ').value = questionCount;
   document.getElementById('setTimeLimit').value = timeLimit;
+  if(paperType === 'sat_math') document.getElementById('setOptionsCount').value = '4';
   rebuildKeyGrid();
 }
 
@@ -528,9 +529,22 @@ function rebuildKeyGrid() {
   for(let q=1; q<=total; q++) {
     let opts = '<option value="">-</option>';
     for(let i=1;i<=optCount;i++){ const l=optionLetter(i); opts += '<option value="'+l+'">'+l+'</option>'; }
-    html += '<div class="key-cell"><div class="qn">Q'+q+'</div><select id="key_q'+q+'">'+opts+'</select></div>';
+    html += '<div class="key-cell"><div class="qn">Q'+q+' <label style="font-weight:400;font-size:10px;cursor:pointer"><input type="checkbox" id="key_q'+q+'_isgrid" onchange="toggleGridCell('+q+')"> grid-in</label></div>'
+      + '<select id="key_q'+q+'">'+opts+'</select>'
+      + '<input type="text" id="key_q'+q+'_grid" class="hidden" placeholder="e.g. 3/4 or 12">'
+      + '</div>';
   }
   document.getElementById('keyGrid').innerHTML = html;
+}
+
+// SAT Math-style "student-produced response" questions have no options —
+// the student types in a number/fraction instead of picking a letter.
+// Multiple equivalent correct forms can be entered separated by "|"
+// (e.g. "3/4|0.75") — any one of them is accepted as correct.
+function toggleGridCell(q) {
+  const isGrid = document.getElementById('key_q'+q+'_isgrid').checked;
+  document.getElementById('key_q'+q).classList.toggle('hidden', isGrid);
+  document.getElementById('key_q'+q+'_grid').classList.toggle('hidden', !isGrid);
 }
 
 // ---- Import answer key from another Claude chat ----
@@ -540,7 +554,13 @@ function copyClaudePrompt() {
   const total = parseInt(document.getElementById('setTotalQ').value) || 27;
   const optCount = parseInt(document.getElementById('setOptionsCount').value) || 8;
   const maxLetter = optionLetter(optCount);
-  const prompt = 'Please give me the answer key for a ' + total + '-question multiple choice exam (TMUA/ESAT style), where each question has options A to ' + maxLetter + '.\n\nReply with ONLY the ' + total + ' answer letters in order from question 1 to ' + total + ' — no question numbers, no spaces needed, no explanation. You can format it in short rows if that\'s easier to read, e.g.:\n\nABCDE\nEEDHG\nHGCBA\n...\n\nJust the letters, nothing else.';
+  const paperType = document.getElementById('setPaperType').value;
+  let prompt;
+  if(paperType === 'sat_math') {
+    prompt = 'Please give me the answer key for a ' + total + '-question SAT Math module (mix of multiple-choice with options A–D, and student-produced response / grid-in questions with no options).\n\nReply with ONE answer per line, in order from question 1 to ' + total + ':\n- For multiple-choice questions, reply with just the letter (A, B, C, or D).\n- For grid-in questions, reply with the exact correct value (e.g. 3/4, 0.75, 12, -5). If more than one form is commonly accepted as equivalent, separate them with a "|", e.g. 3/4|0.75.\n\nExample:\nA\nC\n3/4|0.75\nB\n12\n...\n\nNo question numbers, no explanation — just one answer per line.';
+  } else {
+    prompt = 'Please give me the answer key for a ' + total + '-question multiple choice exam (TMUA/ESAT style), where each question has options A to ' + maxLetter + '.\n\nReply with ONLY the ' + total + ' answer letters in order from question 1 to ' + total + ' — no question numbers, no spaces needed, no explanation. You can format it in short rows if that\'s easier to read, e.g.:\n\nABCDE\nEEDHG\nHGCBA\n...\n\nJust the letters, nothing else.';
+  }
   navigator.clipboard.writeText(prompt).then(() => {
     alert('✅ Prompt copied! Paste it into another Claude chat, get the answers back, then paste that reply into the box below.');
   }).catch(() => {
@@ -548,35 +568,52 @@ function copyClaudePrompt() {
   });
 }
 
+// pendingImportAnswers is always an array of {value, isGrid}, regardless of
+// paper type, so applyImportedAnswers() can handle both formats uniformly.
 function previewImportedAnswers() {
   const raw = document.getElementById('importAnswerText').value;
-  const letters = raw.toUpperCase().replace(/[^A-H]/g, '').split('');
+  const paperType = document.getElementById('setPaperType').value;
   const optCount = parseInt(document.getElementById('setOptionsCount').value) || 8;
   const maxLetter = optionLetter(optCount);
   const currentTotal = parseInt(document.getElementById('setTotalQ').value) || 0;
   const container = document.getElementById('importPreviewContainer');
 
-  if(letters.length === 0) {
-    container.innerHTML = '<div class="edit-warning">⚠️ No valid answer letters found (A–H only).</div>';
+  let parsed;
+  if(paperType === 'sat_math') {
+    // Mixed format: one answer per line — a single letter A-D is treated as
+    // multiple-choice, anything else (numbers, fractions, "3/4|0.75") is
+    // treated as a grid-in value, preserved exactly as typed.
+    parsed = raw.split('\n').map(line => line.trim()).filter(line => line.length > 0).map(line => {
+      const isMcqLetter = /^[A-H]$/i.test(line);
+      return isMcqLetter ? { value: line.toUpperCase(), isGrid: false } : { value: line, isGrid: true };
+    });
+  } else {
+    const letters = raw.toUpperCase().replace(/[^A-H]/g, '').split('');
+    parsed = letters.map(l => ({ value: l, isGrid: false }));
+  }
+
+  if(parsed.length === 0) {
+    container.innerHTML = '<div class="edit-warning">⚠️ No valid answers found' + (paperType==='sat_math' ? ' — expected one answer per line.' : ' (A–H only).') + '</div>';
     pendingImportAnswers = null;
     return;
   }
 
   let warnings = [];
-  if(letters.length !== currentTotal) {
-    warnings.push('You pasted <strong>' + letters.length + '</strong> answers, but "Total Questions" is currently set to <strong>' + currentTotal + '</strong>. Applying will update Total Questions to ' + letters.length + ' and rebuild the grid.');
+  if(parsed.length !== currentTotal) {
+    warnings.push('You pasted <strong>' + parsed.length + '</strong> answers, but "Total Questions" is currently set to <strong>' + currentTotal + '</strong>. Applying will update Total Questions to ' + parsed.length + ' and rebuild the grid.');
   }
-  const overLimitCount = letters.filter(l => (l.charCodeAt(0)-64) > optCount).length;
+  const overLimitCount = parsed.filter(p => !p.isGrid && (p.value.charCodeAt(0)-64) > optCount).length;
   if(overLimitCount > 0) {
     warnings.push(overLimitCount + ' answer(s) go beyond A–' + maxLetter + ' (current "Options per Question" setting) — you may want to increase it before applying.');
   }
 
-  pendingImportAnswers = letters;
+  pendingImportAnswers = parsed;
 
   let rows = '';
-  letters.forEach((l,i) => {
-    const overLimit = (l.charCodeAt(0)-64) > optCount;
-    rows += '<div class="qrow ' + (overLimit?'incorrect':'correct') + '"><span>Q'+(i+1)+'</span><span><strong>'+l+'</strong>'+(overLimit?' ⚠️':'')+'</span></div>';
+  parsed.forEach((p,i) => {
+    const overLimit = !p.isGrid && (p.value.charCodeAt(0)-64) > optCount;
+    const tag = p.isGrid ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(grid-in)</span>' : '';
+    rows += '<div class="qrow ' + (overLimit?'incorrect':'correct') + '"><span>Q'+(i+1)+'</span><span><strong>'+p.value+'</strong>'+tag+(overLimit?' ⚠️':'')+'</span></div>';
   });
 
   let html = '';
@@ -591,9 +628,17 @@ function applyImportedAnswers() {
   const total = pendingImportAnswers.length;
   document.getElementById('setTotalQ').value = total;
   rebuildKeyGrid();
-  pendingImportAnswers.forEach((l, i) => {
-    const el = document.getElementById('key_q'+(i+1));
-    if(el) el.value = l;
+  pendingImportAnswers.forEach((p, i) => {
+    const q = i + 1;
+    if(p.isGrid) {
+      const cb = document.getElementById('key_q'+q+'_isgrid');
+      if(cb) { cb.checked = true; toggleGridCell(q); }
+      const gridEl = document.getElementById('key_q'+q+'_grid');
+      if(gridEl) gridEl.value = p.value;
+    } else {
+      const el = document.getElementById('key_q'+q);
+      if(el) el.value = p.value;
+    }
   });
   document.getElementById('importPreviewContainer').innerHTML = '<div class="confirm-ready" style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600">✅ Applied ' + total + ' answers to the Answer Key below. Double check it, then click "💾 Save Set".</div>';
   document.getElementById('importAnswerText').value = '';
@@ -696,9 +741,12 @@ function saveSet() {
   }
 
   const answerKey = {};
+  const gridQuestions = {};
   let missing = [];
   for(let q=1; q<=total; q++) {
-    const val = document.getElementById('key_q'+q).value;
+    const isGrid = document.getElementById('key_q'+q+'_isgrid').checked;
+    const val = isGrid ? document.getElementById('key_q'+q+'_grid').value.trim() : document.getElementById('key_q'+q).value;
+    if(isGrid) gridQuestions[q] = true;
     if(!val) missing.push(q);
     answerKey[q] = val;
   }
@@ -707,7 +755,7 @@ function saveSet() {
   }
 
   const {ref,set,push,db} = window.firebaseDB;
-  const payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, gradeBoundaries: currentGradeBoundaries, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+  const payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
 
   const setId = editingSetId || push(ref(db,'homeworkSets')).key;
   set(ref(db,'homeworkSets/'+setId), payload).then(() => {
@@ -754,7 +802,13 @@ async function editSet(setId) {
   renderCurrentGradeBoundariesTable();
   rebuildKeyGrid();
   for(let q=1; q<=s.totalQuestions; q++) {
-    if(s.answerKey && s.answerKey[q]) {
+    const isGrid = !!(s.gridQuestions && s.gridQuestions[q]);
+    if(isGrid) {
+      const cb = document.getElementById('key_q'+q+'_isgrid');
+      if(cb) { cb.checked = true; toggleGridCell(q); }
+      const gridEl = document.getElementById('key_q'+q+'_grid');
+      if(gridEl && s.answerKey && s.answerKey[q]) gridEl.value = s.answerKey[q];
+    } else if(s.answerKey && s.answerKey[q]) {
       const el = document.getElementById('key_q'+q);
       if(el) el.value = s.answerKey[q];
     }
@@ -820,12 +874,21 @@ function loadResultsForSet() {
   });
 }
 
+// For grid-in questions the stored correct answer may list several accepted
+// equivalent forms separated by "|" (e.g. "3/4|0.75") — any one matches.
+// Comparison is trimmed + case-insensitive so "12", " 12 ", "b" vs "B" all work.
+function answersMatch(given, correct) {
+  if(given == null || given === '' || correct == null) return false;
+  const acceptable = String(correct).split('|').map(s => s.trim().toLowerCase());
+  return acceptable.includes(String(given).trim().toLowerCase());
+}
+
 function computeScoreAgainst(answers, set) {
   answers = answers || {};
   let score = 0;
   const total = set.totalQuestions;
   for(let q=1; q<=total; q++) {
-    if(answers[q] && set.answerKey[q] === answers[q]) score++;
+    if(answersMatch(answers[q], set.answerKey[q])) score++;
   }
   return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0 };
 }
@@ -1056,9 +1119,13 @@ function renderEditAnswersGrid(setId, code) {
 
   let html = '';
   for(let q=1; q<=set.totalQuestions; q++) {
-    let opts = '<option value="">-</option>';
-    for(let i=1;i<=set.optionsCount;i++){ const l=optionLetter(i); opts += '<option value="'+l+'" '+(answers[q]===l?'selected':'')+'>'+l+'</option>'; }
-    html += '<div class="key-cell"><div class="qn">Q'+q+'</div><select id="editans_q'+q+'">'+opts+'</select></div>';
+    if(set.gridQuestions && set.gridQuestions[q]) {
+      html += '<div class="key-cell"><div class="qn">Q'+q+' <span style="font-weight:400;font-size:10px;color:var(--muted)">grid-in</span></div><input type="text" id="editans_q'+q+'" value="'+(answers[q]||'').replace(/"/g,'&quot;')+'"></div>';
+    } else {
+      let opts = '<option value="">-</option>';
+      for(let i=1;i<=set.optionsCount;i++){ const l=optionLetter(i); opts += '<option value="'+l+'" '+(answers[q]===l?'selected':'')+'>'+l+'</option>'; }
+      html += '<div class="key-cell"><div class="qn">Q'+q+'</div><select id="editans_q'+q+'">'+opts+'</select></div>';
+    }
   }
   document.getElementById('editAnswersGrid').innerHTML = html;
 }
@@ -1067,7 +1134,7 @@ async function saveEditedAnswers(setId, code) {
   const set = homeworkSets[setId];
   const newAnswers = {};
   for(let q=1; q<=set.totalQuestions; q++) {
-    const val = document.getElementById('editans_q'+q).value;
+    const val = document.getElementById('editans_q'+q).value.trim();
     if(val) newAnswers[q] = val;
   }
   const live = computeScoreAgainst(newAnswers, set);
@@ -1176,10 +1243,10 @@ function buildBreakdownSection(label, answers, set) {
     let cls, verdict;
     if(!given) {
       notAttempted++; cls='notattempted'; verdict='— Not attempted';
-    } else if(given === key) {
+    } else if(answersMatch(given, key)) {
       correct++; cls='correct'; verdict='✓ Correct';
     } else {
-      incorrect++; cls='incorrect'; verdict='✗ Correct: '+key;
+      incorrect++; cls='incorrect'; verdict='✗ Correct: '+String(key||'').split('|').join(' or ');
     }
     rows += '<div class="qrow '+cls+'"><span>Q'+q+': answered <strong>'+(given||'—')+'</strong></span><span>'+verdict+'</span></div>';
   }

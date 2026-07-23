@@ -486,7 +486,7 @@ function computeScoreAgainstSet(answers, set) {
   let score = 0;
   const total = set.totalQuestions;
   for(let q=1; q<=total; q++) {
-    if(answers[q] && set.answerKey[q] === answers[q]) score++;
+    if(answersMatch(answers[q], set.answerKey[q])) score++;
   }
   return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0 };
 }
@@ -777,14 +777,22 @@ function renderCurrentQuestion() {
   document.getElementById('qCounterText').textContent = 'Q' + q + ' of ' + total;
   document.getElementById('examQNum').textContent = 'Question ' + q;
 
-  let opts = '';
-  for(let i=1; i<=currentSet.optionsCount; i++) {
-    const letter = optionLetter(i);
-    const id = 'examopt_'+letter;
-    const checked = currentAnswers[q] === letter ? 'checked' : '';
-    opts += '<label class="examopt-row" for="'+id+'"><input type="radio" name="examq" id="'+id+'" value="'+letter+'" '+checked+' onchange="setAnswer(\''+letter+'\')"><span class="examopt-radio"></span><span class="examopt-label">'+letter+'</span></label>';
+  const isGrid = !!(currentSet.gridQuestions && currentSet.gridQuestions[q]);
+  if(isGrid) {
+    const currentVal = (currentAnswers[q] || '').replace(/"/g, '&quot;');
+    document.getElementById('examOptions').innerHTML =
+      '<p style="font-size:13px;color:var(--muted);margin-bottom:10px">This question has no options — type your answer (e.g. a whole number, decimal, or fraction like 3/4).</p>'
+      + '<input type="text" id="examGridInput" value="'+currentVal+'" oninput="setGridAnswer(this.value)" onblur="commitGridAnswer(this.value)" style="width:100%;padding:14px;border:1.5px solid var(--line);border-radius:12px;font-size:17px;font-weight:700;font-family:\'DM Sans\',sans-serif" placeholder="Your answer">';
+  } else {
+    let opts = '';
+    for(let i=1; i<=currentSet.optionsCount; i++) {
+      const letter = optionLetter(i);
+      const id = 'examopt_'+letter;
+      const checked = currentAnswers[q] === letter ? 'checked' : '';
+      opts += '<label class="examopt-row" for="'+id+'"><input type="radio" name="examq" id="'+id+'" value="'+letter+'" '+checked+' onchange="setAnswer(\''+letter+'\')"><span class="examopt-radio"></span><span class="examopt-label">'+letter+'</span></label>';
+    }
+    document.getElementById('examOptions').innerHTML = opts;
   }
-  document.getElementById('examOptions').innerHTML = opts;
 
   const flagBtn = document.getElementById('flagBtn');
   flagBtn.classList.toggle('active', flaggedQuestions.has(q));
@@ -882,11 +890,40 @@ function setAnswer(letter) {
   }
 }
 
+// Grid-in text input: update in-memory on every keystroke (so Next/Navigator
+// reflect it immediately) without spamming Firebase on every character —
+// the actual save happens on blur (leaving the field) via commitGridAnswer,
+// same as setAnswer does for a normal MCQ pick.
+function setGridAnswer(value) {
+  const q = currentQIndex + 1;
+  currentAnswers[q] = value;
+}
+
+function commitGridAnswer(value) {
+  const q = currentQIndex + 1;
+  currentAnswers[q] = value;
+  if(!value) return;
+  logEvent('answer', { question: q, answer: value, mode: currentMode });
+  if(currentMode === 'timed') {
+    const {ref,update,db} = window.firebaseDB;
+    update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
+  }
+}
+
+// For grid-in questions the stored correct answer may list several accepted
+// equivalent forms separated by "|" (e.g. "3/4|0.75") — any one matches.
+// Comparison is trimmed + case-insensitive.
+function answersMatch(given, correct) {
+  if(given == null || given === '' || correct == null) return false;
+  const acceptable = String(correct).split('|').map(s => s.trim().toLowerCase());
+  return acceptable.includes(String(given).trim().toLowerCase());
+}
+
 function computeScore(answers) {
   let score = 0;
   const total = currentSet.totalQuestions;
   for(let q=1; q<=total; q++) {
-    if(answers[q] && currentSet.answerKey[q] === answers[q]) score++;
+    if(answersMatch(answers[q], currentSet.answerKey[q])) score++;
   }
   return { score, total, pct: Math.round((score/total)*1000)/10 };
 }
@@ -1014,7 +1051,7 @@ function computeScoreAgainst(answers, set) {
   let score = 0;
   const total = set.totalQuestions;
   for(let q=1; q<=total; q++) {
-    if(answers[q] && set.answerKey[q] === answers[q]) score++;
+    if(answersMatch(answers[q], set.answerKey[q])) score++;
   }
   return { score, total, pct: Math.round((score/total)*1000)/10 };
 }
@@ -1036,8 +1073,9 @@ function buildBreakdown(answers, set) {
   for(let q=1; q<=set.totalQuestions; q++) {
     const given = answers[q] || '—';
     const correct = set.answerKey[q];
-    const isCorrect = given === correct;
-    html += '<div class="qblock review ' + (isCorrect?'correct':'incorrect') + '"><span class="verdict ' + (isCorrect?'ok':'no') + '">' + (isCorrect?'✓ Correct':'✗ Incorrect') + '</span><div class="qnum">Question ' + q + '</div><div>Your answer: <strong>' + given + '</strong></div>' + (isCorrect?'':'<div class="correct-ans">Correct answer: ' + correct + '</div>') + '</div>';
+    const correctDisplay = String(correct || '').split('|').join(' or ');
+    const isCorrect = answersMatch(answers[q], correct);
+    html += '<div class="qblock review ' + (isCorrect?'correct':'incorrect') + '"><span class="verdict ' + (isCorrect?'ok':'no') + '">' + (isCorrect?'✓ Correct':'✗ Incorrect') + '</span><div class="qnum">Question ' + q + '</div><div>Your answer: <strong>' + given + '</strong></div>' + (isCorrect?'':'<div class="correct-ans">Correct answer: ' + correctDisplay + '</div>') + '</div>';
   }
   return html;
 }
