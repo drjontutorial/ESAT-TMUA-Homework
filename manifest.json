@@ -1,6 +1,6 @@
 {
-  "name": "Dr Jon's TMUA & ESAT Practice Portal",
-  "short_name": "TMUA/ESAT",
+  "name": "Dr Jon's Test Prep Hub",
+  "short_name": "Test Prep Hub",
   "start_url": "dr_jon_tmua_esat_student.html",
   "scope": ".",
   "display": "standalone",
