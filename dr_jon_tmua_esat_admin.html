@@ -80,10 +80,13 @@ h2{font-family:'DM Serif Display',serif;font-size:20px;font-weight:400;margin-bo
 .key-cell select{width:100%;border:1.5px solid var(--line);border-radius:6px;padding:6px;font-weight:800;text-align:center;font-family:'DM Sans',sans-serif}
 
 .set-list-item{display:flex;justify-content:space-between;align-items:center;padding:14px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:10px;flex-wrap:wrap;gap:10px}
-.set-list-item .t{font-weight:800;font-size:15px}
+.set-list-item .t{font-weight:800;font-size:15px;display:flex;align-items:center;gap:8px}
 .set-list-item .m{font-size:12px;color:var(--muted);margin-top:2px}
 .set-actions{display:flex;gap:8px}
 .set-actions button{padding:8px 14px;font-size:12px}
+.set-group-header{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--brand);margin:22px 0 10px;padding-bottom:7px;border-bottom:2px solid var(--brand-light)}
+.set-group-header:first-child{margin-top:0}
+.set-group-header .count{background:var(--brand-light);color:var(--brand);padding:1px 8px;border-radius:50px;font-size:10.5px;letter-spacing:0}
 
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
 .stat-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center}
@@ -867,32 +870,80 @@ function deleteSet(setId) {
   remove(ref(db,'homeworkSets/'+setId));
 }
 
+// Papers created before "Paper Type" existed have no paperType and are
+// treated as Physics (the old default), matching the performance charts.
+const PAPER_TYPE_GROUPS = [
+  { key: 'tmua',     label: 'Maths' },
+  { key: 'esat',     label: 'Physics' },
+  { key: 'sat_math', label: 'SAT Math' }
+];
+
+function paperTypeOf(s) {
+  const t = s.paperType || 'esat';
+  return PAPER_TYPE_GROUPS.some(g => g.key === t) ? t : 'esat';
+}
+
+// Natural sort so "Paper 2" comes before "Paper 10", and A/B/C order works.
+function compareSetTitles(a, b) {
+  return String(a.title||'').localeCompare(String(b.title||''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
 function renderSetsList() {
-  const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+  const entries = Object.entries(homeworkSets);
   if(entries.length === 0) {
     document.getElementById('setsListContainer').innerHTML = '<div class="empty">No sets created yet</div>';
     return;
   }
+
   let html = '';
-  entries.forEach(([id, s]) => {
-    const paperStatus = s.paperUrl ? '<span style="color:#059669;font-weight:700">📄 Paper linked</span>' : '<span style="color:var(--warning);font-weight:700">⚠️ No paper link</span>';
-    html += '<div class="set-list-item"><div><div class="t">'+s.title+'</div><div class="m">'+s.totalQuestions+' questions • A–'+optionLetter(s.optionsCount)+' • '+s.timeLimitMinutes+' min • '+paperStatus+'</div></div><div class="set-actions"><button class="btn btn-ghost" onclick="editSet(\''+id+'\')">Edit</button><button class="btn btn-danger" onclick="deleteSet(\''+id+'\')">Delete</button></div></div>';
+  PAPER_TYPE_GROUPS.forEach(group => {
+    const inGroup = entries.filter(([id, s]) => paperTypeOf(s) === group.key)
+                           .sort((a, b) => compareSetTitles(a[1], b[1]));
+    if(inGroup.length === 0) return;
+
+    html += '<div class="set-group-header">' + group.label + '<span class="count">' + inGroup.length + '</span></div>';
+    inGroup.forEach(([id, s]) => {
+      const paperStatus = s.paperUrl
+        ? '<span style="color:#059669;font-weight:700">📄 Paper linked</span>'
+        : '<span style="color:var(--warning);font-weight:700">⚠️ No paper link</span>';
+      const boundaryStatus = (s.gradeBoundaries && s.gradeBoundaries.length)
+        ? ' • <span style="color:#059669;font-weight:700">🎯 Grades set</span>'
+        : '';
+      html += '<div class="set-list-item"><div><div class="t">'+s.title+'</div>'
+        + '<div class="m">'+s.totalQuestions+' questions • A–'+optionLetter(s.optionsCount)+' • '+s.timeLimitMinutes+' min • '+paperStatus+boundaryStatus+'</div></div>'
+        + '<div class="set-actions"><button class="btn btn-ghost" onclick="editSet(\''+id+'\')">Edit</button><button class="btn btn-danger" onclick="deleteSet(\''+id+'\')">Delete</button></div></div>';
+    });
   });
   document.getElementById('setsListContainer').innerHTML = html;
 }
 
 
-function populateResultsSetSelect() {
-  const sel = document.getElementById('resultsSetSelect');
+// Fills a <select> with papers grouped into <optgroup>s by subject and
+// natural-sorted by title within each group — shared by every paper picker
+// so they all stay consistent with the Existing Sets list.
+function fillGroupedSetSelect(sel, placeholder) {
   const cur = sel.value;
-  const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
-  sel.innerHTML = '<option value="">-- choose a set --</option>';
-  entries.forEach(([id,s]) => {
-    const opt = document.createElement('option');
-    opt.value = id; opt.textContent = s.title;
-    sel.appendChild(opt);
+  const entries = Object.entries(homeworkSets);
+  sel.innerHTML = '<option value="">' + placeholder + '</option>';
+  PAPER_TYPE_GROUPS.forEach(group => {
+    const inGroup = entries.filter(([id, s]) => paperTypeOf(s) === group.key)
+                           .sort((a, b) => compareSetTitles(a[1], b[1]));
+    if(inGroup.length === 0) return;
+    const og = document.createElement('optgroup');
+    og.label = group.label;
+    inGroup.forEach(([id, s]) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = s.title + ' (' + s.totalQuestions + 'q)';
+      og.appendChild(opt);
+    });
+    sel.appendChild(og);
   });
   if(cur) sel.value = cur;
+}
+
+function populateResultsSetSelect() {
+  fillGroupedSetSelect(document.getElementById('resultsSetSelect'), '-- choose a set --');
 }
 
 function loadResultsForSet() {
@@ -1292,17 +1343,9 @@ function closeBreakdown() {
 }
 
 function populateSetDropdowns() {
-  const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
   const sel = document.getElementById('bulkAssignSet');
   if(!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">-- choose a paper --</option>';
-  entries.forEach(([id,s]) => {
-    const opt = document.createElement('option');
-    opt.value = id; opt.textContent = s.title;
-    sel.appendChild(opt);
-  });
-  if(cur) sel.value = cur;
+  fillGroupedSetSelect(sel, '-- choose a paper --');
 }
 
 function saveStudent() {
@@ -1387,16 +1430,22 @@ function openApprovedPapersModal(code) {
   const s = students[code];
   if(!s) return;
   const approved = s.approvedSetIds || {};
-  const entries = Object.entries(homeworkSets).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+  const entries = Object.entries(homeworkSets);
 
   let html = '<h2>📌 Approved Papers — ' + (s.name || code) + '</h2>';
   if(entries.length === 0) {
     html += '<div class="empty">No papers created yet.</div>';
   } else {
     html += '<div style="max-height:300px;overflow-y:auto;margin:10px 0">';
-    entries.forEach(([id, set]) => {
-      const checked = approved[id] ? 'checked' : '';
-      html += '<label style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox" class="approve-paper-cb" value="'+id+'" '+checked+'> '+set.title+'</label>';
+    PAPER_TYPE_GROUPS.forEach(group => {
+      const inGroup = entries.filter(([id, set]) => paperTypeOf(set) === group.key)
+                             .sort((a, b) => compareSetTitles(a[1], b[1]));
+      if(inGroup.length === 0) return;
+      html += '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--brand);padding:10px 10px 4px">' + group.label + '</div>';
+      inGroup.forEach(([id, set]) => {
+        const checked = approved[id] ? 'checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox" class="approve-paper-cb" value="'+id+'" '+checked+'> '+set.title+'</label>';
+      });
     });
     html += '</div>';
   }

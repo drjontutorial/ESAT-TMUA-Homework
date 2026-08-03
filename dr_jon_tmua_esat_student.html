@@ -85,6 +85,8 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 .msg.success{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;display:block}
 .msg.error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;display:block}
 
+.paper-group-header{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--brand);margin:18px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--brand-light)}
+.paper-group-header:first-child{margin-top:0}
 .set-item{background:#f8fafc;border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px;cursor:pointer;transition:all .15s}
 .set-item:active{background:var(--brand-light)}
 .set-item .t{font-weight:800;font-size:15px;margin-bottom:4px}
@@ -418,6 +420,24 @@ function myApprovedSetIds() {
   return Object.keys(approved).filter(id => approved[id] && homeworkSets[id]);
 }
 
+// Papers created before "Paper Type" existed have no paperType and are
+// treated as Physics (the old default), matching the admin side.
+const PAPER_TYPE_GROUPS = [
+  { key: 'tmua',     label: 'Maths' },
+  { key: 'esat',     label: 'Physics' },
+  { key: 'sat_math', label: 'SAT Math' }
+];
+
+function paperTypeOf(s) {
+  const t = (s && s.paperType) || 'esat';
+  return PAPER_TYPE_GROUPS.some(g => g.key === t) ? t : 'esat';
+}
+
+// Natural sort so "Paper 2" comes before "Paper 10", and A/B/C order works.
+function compareSetTitles(a, b) {
+  return String(a.title||'').localeCompare(String(b.title||''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
 async function renderMyPaperCard() {
   const container = document.getElementById('myPaperContent');
   const setIds = myApprovedSetIds();
@@ -427,17 +447,23 @@ async function renderMyPaperCard() {
   }
   const {ref,get,db} = window.firebaseDB;
   let html = '';
-  for(const setId of setIds.sort((a,b) => (homeworkSets[b].createdAt||0)-(homeworkSets[a].createdAt||0))) {
-    const set = homeworkSets[setId];
-    let badge = '<span class="badge not-started">Not started</span>';
-    try {
-      const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
-      const sub = snap.exists() ? snap.val() : null;
-      if(sub && sub.overtimeSubmittedAt) badge = '<span class="badge completed">Completed (+ overtime)</span>';
-      else if(sub && sub.timedSubmittedAt) badge = '<span class="badge overtime-pending">Timed done — overtime available</span>';
-      else if(sub && sub.startedAt) badge = '<span class="badge not-started">In progress</span>';
-    } catch(e) {}
-    html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+set.title+'</div><div class="m">'+set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit</div>'+badge+'</div>';
+  for(const group of PAPER_TYPE_GROUPS) {
+    const inGroup = setIds.filter(id => paperTypeOf(homeworkSets[id]) === group.key)
+                          .sort((a,b) => compareSetTitles(homeworkSets[a], homeworkSets[b]));
+    if(inGroup.length === 0) continue;
+    html += '<div class="paper-group-header">' + group.label + '</div>';
+    for(const setId of inGroup) {
+      const set = homeworkSets[setId];
+      let badge = '<span class="badge not-started">Not started</span>';
+      try {
+        const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
+        const sub = snap.exists() ? snap.val() : null;
+        if(sub && sub.overtimeSubmittedAt) badge = '<span class="badge completed">Completed (+ overtime)</span>';
+        else if(sub && sub.timedSubmittedAt) badge = '<span class="badge overtime-pending">Timed done — overtime available</span>';
+        else if(sub && sub.startedAt) badge = '<span class="badge not-started">In progress</span>';
+      } catch(e) {}
+      html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+set.title+'</div><div class="m">'+set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit</div>'+badge+'</div>';
+    }
   }
   container.innerHTML = html;
 }
