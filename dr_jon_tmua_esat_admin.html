@@ -525,6 +525,27 @@ function updateQuestionCountFromPaperType() {
 function rebuildKeyGrid() {
   const total = parseInt(document.getElementById('setTotalQ').value) || 0;
   const optCount = parseInt(document.getElementById('setOptionsCount').value) || 8;
+
+  // Capture whatever's already entered/loaded before wiping the grid, so
+  // changing Paper Type / Options / Total Questions doesn't lose answers
+  // that were already typed in or loaded from an existing paper.
+  const existing = {};
+  const oldGridEl = document.getElementById('keyGrid');
+  if(oldGridEl) {
+    oldGridEl.querySelectorAll('select[id^="key_q"]').forEach(el => {
+      const m = el.id.match(/^key_q(\d+)$/);
+      if(m && el.value) existing[m[1]] = { selectVal: el.value };
+    });
+    oldGridEl.querySelectorAll('input[id$="_grid"]').forEach(el => {
+      const m = el.id.match(/^key_q(\d+)_grid$/);
+      if(m && el.value) { existing[m[1]] = existing[m[1]] || {}; existing[m[1]].gridVal = el.value; }
+    });
+    oldGridEl.querySelectorAll('input[id$="_isgrid"]').forEach(el => {
+      const m = el.id.match(/^key_q(\d+)_isgrid$/);
+      if(m && el.checked) { existing[m[1]] = existing[m[1]] || {}; existing[m[1]].isGrid = true; }
+    });
+  }
+
   let html = '';
   for(let q=1; q<=total; q++) {
     let opts = '<option value="">-</option>';
@@ -535,6 +556,17 @@ function rebuildKeyGrid() {
       + '</div>';
   }
   document.getElementById('keyGrid').innerHTML = html;
+
+  for(let q=1; q<=total; q++) {
+    const e = existing[q];
+    if(!e) continue;
+    if(e.isGrid) {
+      const cb = document.getElementById('key_q'+q+'_isgrid');
+      if(cb) { cb.checked = true; toggleGridCell(q); }
+    }
+    if(e.selectVal) { const el = document.getElementById('key_q'+q); if(el) el.value = e.selectVal; }
+    if(e.gridVal) { const el = document.getElementById('key_q'+q+'_grid'); if(el) el.value = e.gridVal; }
+  }
 }
 
 // SAT Math-style "student-produced response" questions have no options —
