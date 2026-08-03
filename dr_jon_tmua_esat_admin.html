@@ -254,7 +254,7 @@ tbody tr:hover{background:#f8fafc}
         <div class="edit-warning hidden" id="editSubmissionWarning"></div>
         <div class="form-row">
           <div class="form-group"><label>Title</label><input type="text" id="setTitle" placeholder="e.g. TMUA Set 1"></div>
-          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">ESAT (27 questions)</option><option value="tmua">TMUA (20 questions)</option><option value="sat_math">SAT Math Module (22 questions)</option></select></div>
+          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">Physics (27 questions)</option><option value="tmua">Maths (20 questions)</option><option value="sat_math">SAT Math Module (22 questions)</option></select></div>
           <div class="form-group"><label>Total Questions</label><input type="number" id="setTotalQ" min="1" max="100" value="27" onchange="rebuildKeyGrid()"></div>
           <div class="form-group"><label>Options per Question</label>
             <select id="setOptionsCount" onchange="rebuildKeyGrid()">
@@ -1495,15 +1495,16 @@ function renderStudentPerformanceChart(rows) {
     return;
   }
 
-  // Papers created before "Paper Type" existed default to ESAT.
-  const tmuaRows = submittedRows.filter(r => (r.set.paperType || 'esat') === 'tmua');
-  const esatRows = submittedRows.filter(r => (r.set.paperType || 'esat') !== 'tmua');
+  // Papers created before "Paper Type" existed default to Physics (stored
+  // internally as paperType 'esat' — only the display label changed).
+  const mathsRows = submittedRows.filter(r => (r.set.paperType || 'esat') === 'tmua');
+  const physicsRows = submittedRows.filter(r => (r.set.paperType || 'esat') !== 'tmua');
 
   let html = '';
-  html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin-bottom:8px">TMUA</h3>';
-  html += buildSingleChartSvg(tmuaRows);
-  html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin:18px 0 8px">ESAT</h3>';
-  html += buildSingleChartSvg(esatRows);
+  html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin-bottom:8px">Maths</h3>';
+  html += buildSingleChartSvg(mathsRows);
+  html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin:18px 0 8px">Physics</h3>';
+  html += buildSingleChartSvg(physicsRows);
   container.innerHTML = html;
 }
 
