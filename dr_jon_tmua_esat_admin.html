@@ -1508,11 +1508,17 @@ function renderStudentDetailTable(code, rows) {
     const started = sub.startedAt ? new Date(sub.startedAt).toLocaleString('en-GB') : '—';
     const submitted = sub.timedSubmittedAt ? new Date(sub.timedSubmittedAt).toLocaleString('en-GB') : '<span style="color:var(--gold)">not submitted</span>';
     const live = sub.timedSubmittedAt ? computeScoreAgainst(sub.timedAnswers, set) : null;
+    const overtimeLive = sub.overtimeSubmittedAt ? computeScoreAgainst(sub.overtimeAnswers, set) : null;
     const pillClass = live ? (live.pct>=70?'good':live.pct>=50?'mid':'bad') : null;
     const timedCell = live ? '<span class="pill '+pillClass+'">'+live.pct+'%</span>' : '—';
-    const grade = live ? computeGrade(live.score, set.gradeBoundaries) : null;
-    const gradeCell = grade !== null ? '<span class="pill mid">'+grade+'</span>' : '—';
-    const overtimeCell = sub.overtimeSubmittedAt ? '<span class="pill mid">'+computeScoreAgainst(sub.overtimeAnswers, set).pct+'%</span>' : '<span class="pill pending">—</span>';
+    // Grade normally comes from the timed score, but falls back to the
+    // overtime score if the student never actually finished a timed attempt
+    // (e.g. only completed the paper in overtime) — otherwise a genuinely
+    // completed paper would show no grade at all just because Timed is blank.
+    const gradeSource = live || overtimeLive;
+    const grade = gradeSource ? computeGrade(gradeSource.score, set.gradeBoundaries) : null;
+    const gradeCell = grade !== null ? '<span class="pill mid">'+grade+(!live && overtimeLive ? ' (OT)' : '')+'</span>' : '—';
+    const overtimeCell = overtimeLive ? '<span class="pill mid">'+overtimeLive.pct+'%</span>' : '<span class="pill pending">—</span>';
     html += '<tr onclick="showBreakdownFor(\''+setId+'\',\''+code+'\')"><td><strong>'+set.title+'</strong></td><td>'+started+'</td><td>'+submitted+'</td><td>'+timedCell+'</td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td></tr>';
   });
   html += '</tbody></table>';
