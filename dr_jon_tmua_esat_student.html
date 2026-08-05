@@ -359,7 +359,9 @@ let currentAnswers = {};
 let currentMode = 'timed'; // 'timed' | 'overtime'
 let timerInterval = null;
 let remainingSeconds = 0;
-let timedFinalized = false;
+let timedFinalized = false; // guards against double-invoking finalizeTimed — flips true immediately, before the write
+let timedWriteConfirmed = false; // true only once the timed-submission write has actually succeeded — this is what tab-close protection checks
+let submissionWriteInFlight = false; // true while ANY submission write (timed/overtime/reattempt) is in progress
 let currentQIndex = 0; // 0-based index of the question currently shown
 let flaggedQuestions = new Set(); // question numbers (1-based) flagged for review, per attempt
 
@@ -599,13 +601,21 @@ async function openSet(setId) {
 
   if(elapsedSec >= limitSec) {
     // time expired while away — finalize timed using draft, then go overtime
-    await finalizeTimed(sub.startedAt + limitSec*1000);
+    try {
+      await finalizeTimed(sub.startedAt + limitSec*1000);
+    } catch(e) {
+      // finalizeTimed already alerted the student — send them back to their
+      // paper list rather than leaving the screen stuck on nothing.
+      backToMyPaper();
+      return;
+    }
     document.getElementById('overtimeWarningScreen').classList.remove('hidden');
   } else {
     // resume timed session with remaining time
     remainingSeconds = limitSec - elapsedSec;
     currentMode = 'timed';
     timedFinalized = false;
+    timedWriteConfirmed = false;
     flaggedQuestions = new Set();
     setupExam('resume');
     document.getElementById('quizScreen').classList.remove('hidden');
@@ -660,6 +670,7 @@ async function beginTimedTest() {
   currentAnswers = {};
   currentMode = 'timed';
   timedFinalized = false;
+  timedWriteConfirmed = false;
   flaggedQuestions = new Set();
   remainingSeconds = currentSet.timeLimitMinutes * 60;
   logEvent('confirm_start', { paperOpened: !!paperTab, timeLimitMinutes: currentSet.timeLimitMinutes });
@@ -724,7 +735,6 @@ function startTimer() {
   timerDeadline = Date.now() + remainingSeconds * 1000;
   tickTimer();
   timerInterval = setInterval(tickTimer, 1000);
-  window.addEventListener('beforeunload', beforeUnloadHandler);
   document.addEventListener('visibilitychange', onVisibilityChange);
 }
 
@@ -734,7 +744,11 @@ function tickTimer() {
   updateTimerDisplay();
   if(remainingSeconds <= 0) {
     clearInterval(timerInterval);
-    stopUnloadProtection();
+    // NOTE: do NOT call stopUnloadProtection() here — the tab-close warning
+    // must stay active until the submission write actually succeeds
+    // (finalizeTimed only lifts it once timedWriteConfirmed is true). Lifting
+    // it early was the bug that let students lose a genuinely-in-time
+    // submission if they closed the tab right as it was saving.
     forceSubmitDueToTimeout();
   }
 }
@@ -745,7 +759,11 @@ function tickTimer() {
 // than letting them keep typing on the same screen with just a banner.
 // They must explicitly press "Continue to overtime attempt" to keep going.
 async function forceSubmitDueToTimeout() {
-  await finalizeTimed(timerDeadline);
+  try {
+    await finalizeTimed(timerDeadline);
+  } catch(e) {
+    return; // finalizeTimed already alerted the student — stay on the exam screen so Submit can be retried
+  }
   const sub = (await window.firebaseDB.get(window.firebaseDB.ref(window.firebaseDB.db,'submissions/'+currentSetId+'/'+studentCode))).val();
   document.getElementById('quizScreen').classList.add('hidden');
   showResults(sub, false);
@@ -758,16 +776,20 @@ function onVisibilityChange() {
   if(document.visibilityState === 'visible' && timerDeadline !== null) tickTimer();
 }
 
+// Registered once, globally, for the whole page lifetime (see bottom of
+// script) — its own conditions decide whether a warning is actually needed,
+// rather than relying on precisely-timed add/remove calls, which is what
+// caused the original bug (protection was removed a moment too early,
+// right as the critical save was starting).
 function beforeUnloadHandler(e) {
-  if(currentMode === 'timed' && !timedFinalized) {
+  if(submissionWriteInFlight || (currentMode === 'timed' && !timedWriteConfirmed)) {
     e.preventDefault();
-    e.returnValue = 'Your timed attempt is still running. Leaving now will not pause the clock.';
+    e.returnValue = 'Your work is still being saved. Please wait a moment before closing this tab.';
     return e.returnValue;
   }
 }
 
 function stopUnloadProtection() {
-  window.removeEventListener('beforeunload', beforeUnloadHandler);
   document.removeEventListener('visibilitychange', onVisibilityChange);
   timerDeadline = null;
 }
@@ -954,15 +976,51 @@ function computeScore(answers) {
   return { score, total, pct: Math.round((score/total)*1000)/10 };
 }
 
+// Writes submission fields with a few retries on transient network failures
+// (mobile connections drop mid-request often enough that this matters).
+// Keeps the tab-close warning active the entire time, and throws (after
+// alerting the student) if it never succeeds — callers must NOT treat that
+// as a successful submission.
+async function writeSubmissionFieldsWithRetry(fields) {
+  const {ref,update,db} = window.firebaseDB;
+  submissionWriteInFlight = true;
+  try {
+    let lastErr = null;
+    for(let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+        return;
+      } catch(err) {
+        lastErr = err;
+        await new Promise(r => setTimeout(r, attempt * 800));
+      }
+    }
+    alert('⚠️ We could not save your submission — please check your internet connection, then press Submit again. Do NOT close this tab until you see your results.');
+    throw lastErr;
+  } finally {
+    submissionWriteInFlight = false;
+  }
+}
+
 async function finalizeTimed(finalizedAt) {
   if(timedFinalized) return;
   timedFinalized = true;
   clearInterval(timerInterval);
-  stopUnloadProtection();
   const { score, total, pct } = computeScore(currentAnswers);
   const fields = { timedAnswers: currentAnswers, timedSubmittedAt: finalizedAt, timedScore: score, timedTotal: total, timedPercentage: pct };
-  const {ref,update,db} = window.firebaseDB;
-  await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+
+  try {
+    await writeSubmissionFieldsWithRetry(fields);
+  } catch(e) {
+    // Write never succeeded — allow retrying (a fresh Submit press calls
+    // this again) and keep the tab-close warning active the whole time,
+    // since timedWriteConfirmed is still false.
+    timedFinalized = false;
+    throw e;
+  }
+
+  timedWriteConfirmed = true;
+  stopUnloadProtection();
   document.getElementById('timerBox').classList.add('hidden');
   document.getElementById('timesUpBanner').classList.remove('hidden');
   currentMode = 'overtime';
@@ -998,7 +1056,11 @@ async function confirmSubmit() {
 
 async function doSubmit() {
   if(currentMode === 'timed' && !timedFinalized) {
-    await finalizeTimed(Date.now());
+    try {
+      await finalizeTimed(Date.now());
+    } catch(e) {
+      return; // finalizeTimed already alerted the student — stay on the exam screen so Submit can be retried
+    }
     const sub = (await window.firebaseDB.get(window.firebaseDB.ref(window.firebaseDB.db,'submissions/'+currentSetId+'/'+studentCode))).val();
     showResults(sub, false);
     document.getElementById('quizScreen').classList.add('hidden');
@@ -1008,8 +1070,12 @@ async function doSubmit() {
   if(currentMode === 'reattempt') {
     const { score, total, pct } = computeScore(currentAnswers);
     const fields = { reattemptAnswers: currentAnswers, reattemptSubmittedAt: Date.now(), reattemptScore: score, reattemptTotal: total, reattemptPercentage: pct };
-    const {ref,update,get,db} = window.firebaseDB;
-    await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+    try {
+      await writeSubmissionFieldsWithRetry(fields);
+    } catch(e) {
+      return; // stay on the exam screen so Submit can be retried
+    }
+    const {ref,get,db} = window.firebaseDB;
     const sub = (await get(ref(db,'submissions/'+currentSetId+'/'+studentCode))).val();
     document.getElementById('quizScreen').classList.add('hidden');
     document.getElementById('reattemptBanner').classList.add('hidden');
@@ -1020,8 +1086,12 @@ async function doSubmit() {
   // overtime submit
   const { score, total, pct } = computeScore(currentAnswers);
   const fields = { overtimeAnswers: currentAnswers, overtimeSubmittedAt: Date.now(), overtimeScore: score, overtimeTotal: total, overtimePercentage: pct };
-  const {ref,update,get,db} = window.firebaseDB;
-  await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), fields);
+  try {
+    await writeSubmissionFieldsWithRetry(fields);
+  } catch(e) {
+    return; // stay on the exam screen so Submit can be retried
+  }
+  const {ref,get,db} = window.firebaseDB;
   const sub = (await get(ref(db,'submissions/'+currentSetId+'/'+studentCode))).val();
   document.getElementById('quizScreen').classList.add('hidden');
   showResults(sub, true);
@@ -1105,6 +1175,12 @@ function buildBreakdown(answers, set) {
   }
   return html;
 }
+
+// Registered once for the whole page lifetime — beforeUnloadHandler's own
+// conditions (submissionWriteInFlight, or timed-but-not-write-confirmed)
+// decide whether a warning is actually shown, so this is safe to leave
+// attached at all times rather than juggling add/remove calls per screen.
+window.addEventListener('beforeunload', beforeUnloadHandler);
 </script>
 </body>
 </html>

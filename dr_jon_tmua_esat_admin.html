@@ -1141,10 +1141,77 @@ function showBreakdownFor(setId, code) {
   if(s.overtimeSubmittedAt) {
     html += buildBreakdownSection('Overtime Attempt', s.overtimeAnswers, set);
   }
-  html += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button><button class="btn btn-ghost" style="flex:1" onclick="openEditAnswersModal(\''+setId+'\',\''+code+'\')">✏️ Edit Answers</button><button class="btn btn-danger" style="flex:1" onclick="deleteAttempt(\''+setId+'\',\''+code+'\')">🗑️ Delete Attempt</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
+
+  // Recovery tool for the "shows as not submitted despite the student having
+  // real answers saved" bug — lets an admin manually promote whatever
+  // answers ARE on record (overtime, or the last autosaved draft) into the
+  // official timed submission, for cases confirmed to be a technical glitch
+  // rather than a genuine non-submission.
+  const hasSourceToPromote = !s.timedSubmittedAt && ((s.overtimeAnswers && Object.keys(s.overtimeAnswers).length) || (s.draftAnswers && Object.keys(s.draftAnswers).length));
+  const promoteBtn = hasSourceToPromote
+    ? '<button class="btn btn-green" style="flex:1" onclick="markAsSubmittedWithinTime(\''+setId+'\',\''+code+'\')">✅ Mark Submitted (Within Time)</button>'
+    : '';
+
+  html += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">' + promoteBtn + '<button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button><button class="btn btn-ghost" style="flex:1" onclick="openEditAnswersModal(\''+setId+'\',\''+code+'\')">✏️ Edit Answers</button><button class="btn btn-danger" style="flex:1" onclick="deleteAttempt(\''+setId+'\',\''+code+'\')">🗑️ Delete Attempt</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
 
   document.getElementById('breakdownModalContent').innerHTML = html;
   document.getElementById('breakdownModal').classList.add('show');
+}
+
+// ---- Recovery: promote overtime/draft answers into the official timed
+// submission, for a paper that shows "not submitted" despite the student
+// having real saved answers — e.g. the "timed write silently failed" bug.
+async function markAsSubmittedWithinTime(setId, code) {
+  const allSubsForSet = (setId === currentResultsSetId) ? allSubmissions : null;
+  const s = allSubsForSet ? allSubsForSet[code] : lastLoadedDetailSubs[setId];
+  const set = homeworkSets[setId];
+  if(!s || !set) return;
+
+  const promotingOvertime = !!(s.overtimeAnswers && Object.keys(s.overtimeAnswers).length);
+  const sourceAnswers = promotingOvertime ? s.overtimeAnswers : s.draftAnswers;
+  const sourceLabel = promotingOvertime ? 'their overtime answers' : 'their last autosaved draft answers';
+  const sourceTimestamp = promotingOvertime ? s.overtimeSubmittedAt : Date.now();
+
+  if(!sourceAnswers || Object.keys(sourceAnswers).length === 0) {
+    alert('There\'s nothing to promote — this student has no saved answers (overtime or draft) for this paper.');
+    return;
+  }
+
+  const name = studentName(code) || code;
+  const msg = 'Mark ' + name + '\'s "' + set.title + '" as submitted WITHIN TIME?\n\n'
+    + 'This uses ' + sourceLabel + ' as their official timed submission'
+    + (promotingOvertime ? ' and removes the separate overtime record (it becomes the same thing).' : '.')
+    + '\n\nOnly do this if you\'re confident they genuinely finished within the time limit and this is fixing a technical glitch, not overriding a real result.';
+  if(!confirm(msg)) return;
+
+  const live = computeScoreAgainst(sourceAnswers, set);
+  const {ref,update,db} = window.firebaseDB;
+  const fields = {
+    timedAnswers: sourceAnswers,
+    timedSubmittedAt: sourceTimestamp,
+    timedScore: live.score,
+    timedTotal: live.total,
+    timedPercentage: live.pct
+  };
+  if(promotingOvertime) {
+    // Firebase removes a key when its value is set to null via update().
+    fields.overtimeAnswers = null;
+    fields.overtimeSubmittedAt = null;
+    fields.overtimeScore = null;
+    fields.overtimeTotal = null;
+    fields.overtimePercentage = null;
+  }
+
+  try {
+    await update(ref(db,'submissions/'+setId+'/'+code), fields);
+    alert('✅ Marked as submitted within time — score: ' + live.score + '/' + live.total + ' (' + live.pct + '%)');
+    closeBreakdown();
+    if(setId === currentResultsSetId) loadResultsForSet();
+    const byStudentViewVisible = document.getElementById('perfByStudent').style.display !== 'none';
+    if(byStudentViewVisible && code === currentDetailCode) openStudentDetail(code);
+  } catch(err) {
+    alert('❌ Failed: ' + err);
+  }
 }
 
 // ---- Delete a student's entire attempt for a paper (wipes timed + overtime + log) ----
