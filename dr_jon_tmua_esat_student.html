@@ -334,6 +334,16 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
   </div>
 </div>
 
+<!-- FLAG FEATURE INTRO (shown once, first time a student starts a timed attempt) -->
+<div class="modal-overlay" id="flagIntroModal">
+  <div class="modal">
+    <h2>⚑ New: Flag for Review</h2>
+    <p style="font-size:14px;line-height:1.6;color:var(--ink);margin-bottom:10px">See a question you're unsure about? Tap <strong>"⚑ Flag for Review"</strong> while you're answering it.</p>
+    <p style="font-size:14px;line-height:1.6;color:var(--ink);margin-bottom:14px">Dr Jon will see exactly which questions you flagged, so he can go over them with you in your next lesson. Flagging is just a note to yourself — it never affects your score or submission.</p>
+    <button class="btn" onclick="closeFlagIntro()" style="width:100%">Got it</button>
+  </div>
+</div>
+
 <!-- RESULTS -->
 <div class="hidden" id="resultsScreen">
   <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
@@ -680,6 +690,20 @@ async function beginTimedTest() {
   document.getElementById('quizScreen').classList.remove('hidden');
   document.getElementById('timerBox').classList.remove('hidden');
   startTimer();
+  maybeShowFlagIntro();
+}
+
+// Shown once ever (per device/browser) the first time a student starts a
+// timed attempt — introduces the flag-for-review feature without cluttering
+// the exam screen itself with explanatory text.
+function maybeShowFlagIntro() {
+  if(localStorage.getItem('flagIntroSeen')) return;
+  document.getElementById('flagIntroModal').classList.add('show');
+}
+
+function closeFlagIntro() {
+  localStorage.setItem('flagIntroSeen', '1');
+  document.getElementById('flagIntroModal').classList.remove('show');
 }
 
 function beginOvertime() {
@@ -860,6 +884,16 @@ function toggleFlag() {
   const q = currentQIndex + 1;
   if(flaggedQuestions.has(q)) flaggedQuestions.delete(q); else flaggedQuestions.add(q);
   renderCurrentQuestion();
+  saveFlags();
+}
+
+// Flags are saved as their own field, separately from saveProgress()'s
+// answer-draft write — so flagging the very last question (with no more
+// "Next" clicks left to trigger a save) still reaches Dr Jon even if the
+// student submits immediately after.
+function saveFlags() {
+  const {ref,update,db} = window.firebaseDB;
+  update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { flaggedQuestions: Array.from(flaggedQuestions) }).catch(()=>{});
 }
 
 function goNextQuestion() {
@@ -1007,7 +1041,7 @@ async function finalizeTimed(finalizedAt) {
   timedFinalized = true;
   clearInterval(timerInterval);
   const { score, total, pct } = computeScore(currentAnswers);
-  const fields = { timedAnswers: currentAnswers, timedSubmittedAt: finalizedAt, timedScore: score, timedTotal: total, timedPercentage: pct };
+  const fields = { timedAnswers: currentAnswers, timedSubmittedAt: finalizedAt, timedScore: score, timedTotal: total, timedPercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
 
   try {
     await writeSubmissionFieldsWithRetry(fields);
@@ -1069,7 +1103,7 @@ async function doSubmit() {
   }
   if(currentMode === 'reattempt') {
     const { score, total, pct } = computeScore(currentAnswers);
-    const fields = { reattemptAnswers: currentAnswers, reattemptSubmittedAt: Date.now(), reattemptScore: score, reattemptTotal: total, reattemptPercentage: pct };
+    const fields = { reattemptAnswers: currentAnswers, reattemptSubmittedAt: Date.now(), reattemptScore: score, reattemptTotal: total, reattemptPercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
     try {
       await writeSubmissionFieldsWithRetry(fields);
     } catch(e) {
@@ -1085,7 +1119,7 @@ async function doSubmit() {
   }
   // overtime submit
   const { score, total, pct } = computeScore(currentAnswers);
-  const fields = { overtimeAnswers: currentAnswers, overtimeSubmittedAt: Date.now(), overtimeScore: score, overtimeTotal: total, overtimePercentage: pct };
+  const fields = { overtimeAnswers: currentAnswers, overtimeSubmittedAt: Date.now(), overtimeScore: score, overtimeTotal: total, overtimePercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
   try {
     await writeSubmissionFieldsWithRetry(fields);
   } catch(e) {

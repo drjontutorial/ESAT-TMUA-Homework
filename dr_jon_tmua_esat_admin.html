@@ -1064,7 +1064,8 @@ function renderResults(setId) {
     const gradeCell = grade !== null ? '<span class="pill mid">'+grade+'</span>' : '—';
     const overtimeCell = overtimeLive ? '<span class="pill mid">'+overtimeLive.pct+'%</span>' : '<span class="pill pending">—</span>';
     const ts = new Date(s.timedSubmittedAt).toLocaleString('en-GB');
-    html += '<tr onclick="showBreakdown(\''+code+'\')"><td><strong>'+code+'</strong></td><td>'+name+'</td><td>'+live.score+' / '+live.total+(stale?'<span class="recalc-flag">recalculated</span>':'')+'</td><td><span class="pill '+pillClass+'">'+live.pct+'%</span></td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td><td>'+ts+'</td></tr>';
+    const flagTag = (s.flaggedQuestions && s.flaggedQuestions.length) ? ' <span title="Has questions flagged for review">🚩</span>' : '';
+    html += '<tr onclick="showBreakdown(\''+code+'\')"><td><strong>'+code+'</strong>'+flagTag+'</td><td>'+name+'</td><td>'+live.score+' / '+live.total+(stale?'<span class="recalc-flag">recalculated</span>':'')+'</td><td><span class="pill '+pillClass+'">'+live.pct+'%</span></td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td><td>'+ts+'</td></tr>';
   });
   html += '</tbody></table></div>';
 
@@ -1137,9 +1138,17 @@ function showBreakdownFor(setId, code) {
   const name = studentName(code) || code;
 
   let html = '<h2>'+name+' — '+set.title+'</h2>';
-  html += buildBreakdownSection('Timed Attempt', s.timedAnswers, set);
+
+  // Questions the student flagged as "unsure, please go over in the lesson"
+  // while attempting the paper — surfaced up top so it's not missed.
+  const flagged = (s.flaggedQuestions || []).slice().sort((a,b) => a-b);
+  if(flagged.length > 0) {
+    html += '<div class="edit-warning" style="background:var(--gold-bg,#fef3c7);border-color:#fbbf24;color:#92400e">🚩 <strong>Flagged for review:</strong> Q' + flagged.join(', Q') + ' — ' + name + ' wants to go over ' + (flagged.length===1?'this question':'these questions') + ' with you in a lesson.</div>';
+  }
+
+  html += buildBreakdownSection('Timed Attempt', s.timedAnswers, set, flagged);
   if(s.overtimeSubmittedAt) {
-    html += buildBreakdownSection('Overtime Attempt', s.overtimeAnswers, set);
+    html += buildBreakdownSection('Overtime Attempt', s.overtimeAnswers, set, flagged);
   }
 
   // Recovery tool for the "shows as not submitted despite the student having
@@ -1383,8 +1392,9 @@ function closeTimeline() {
   document.getElementById('timelineModal').classList.remove('show');
 }
 
-function buildBreakdownSection(label, answers, set) {
+function buildBreakdownSection(label, answers, set, flagged) {
   answers = answers || {};
+  flagged = flagged || [];
   let correct=0, incorrect=0, notAttempted=0;
   let rows = '';
   for(let q=1; q<=set.totalQuestions; q++) {
@@ -1398,7 +1408,8 @@ function buildBreakdownSection(label, answers, set) {
     } else {
       incorrect++; cls='incorrect'; verdict='✗ Correct: '+String(key||'').split('|').join(' or ');
     }
-    rows += '<div class="qrow '+cls+'"><span>Q'+q+': answered <strong>'+(given||'—')+'</strong></span><span>'+verdict+'</span></div>';
+    const flagTag = flagged.includes(q) ? ' <span title="Flagged for review by the student">🚩</span>' : '';
+    rows += '<div class="qrow '+cls+'"><span>Q'+q+flagTag+': answered <strong>'+(given||'—')+'</strong></span><span>'+verdict+'</span></div>';
   }
   const grade = computeGrade(correct, set.gradeBoundaries);
   const gradeText = grade !== null ? ' <span style="color:var(--brand);font-weight:800">— Grade: '+grade+'</span>' : '';
