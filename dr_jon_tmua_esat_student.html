@@ -892,9 +892,24 @@ function renderCurrentQuestion() {
       const leafKey = lqLeafKey(q, label);
       const rowLabel = label ? ('('+label+')') : ('Q'+q);
       const spec = parseLQAnswerSpec((currentSet.answerKey || {})[leafKey]);
-      const isManual = ((currentSet.gradingMode || {})[leafKey]) === 'manual';
+      const gradingModeVal = String((currentSet.gradingMode || {})[leafKey] || '');
+      const isManual = gradingModeVal === 'manual';
+      const mcqMatch = gradingModeVal.match(/^mcq(\d+)$/);
 
-      if(spec.template) {
+      if(mcqMatch) {
+        // Real clickable A/B/C/D-style options, like the MCQ papers — the
+        // student picks a letter rather than typing anything.
+        const count = parseInt(mcqMatch[1]);
+        const current = currentAnswers[leafKey];
+        let opts = '';
+        for(let i=1; i<=count; i++) {
+          const letter = optionLetter(i);
+          const id = 'lqmcq_'+leafKey+'_'+letter;
+          const checked = current === letter ? 'checked' : '';
+          opts += '<label class="examopt-row" for="'+id+'"><input type="radio" name="lqmcq_'+leafKey+'" id="'+id+'" value="'+letter+'" '+checked+' onchange="commitLQAnswer(\''+leafKey+'\',\''+letter+'\')"><span class="examopt-radio"></span><span class="examopt-label">'+letter+'</span></label>';
+        }
+        html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:8px;color:var(--brand)">'+rowLabel+'</label>'+opts+'</div>';
+      } else if(spec.template) {
         // Show the real question wording with a small typing box at each
         // blank. "___" gives a native number input (physically can't accept
         // letters, mobile shows the numeric keypad too); "~~~" gives a short
