@@ -257,9 +257,9 @@ tbody tr:hover{background:#f8fafc}
         <div class="edit-warning hidden" id="editSubmissionWarning"></div>
         <div class="form-row">
           <div class="form-group"><label>Title</label><input type="text" id="setTitle" placeholder="e.g. TMUA Set 1"></div>
-          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">Physics (27 questions)</option><option value="tmua">Maths (20 questions)</option><option value="sat_math">SAT Math Module (22 questions)</option></select></div>
-          <div class="form-group"><label>Total Questions</label><input type="number" id="setTotalQ" min="1" max="100" value="27" onchange="rebuildKeyGrid()"></div>
-          <div class="form-group"><label>Options per Question</label>
+          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">Physics (27 questions)</option><option value="tmua">Maths (20 questions)</option><option value="sat_math">SAT Math Module (22 questions)</option><option value="sixteen_mcq">16+ MCQ (8 questions)</option><option value="lq_16plus">16+ Long Questions</option></select></div>
+          <div class="form-group" id="setTotalQGroup"><label>Total Questions</label><input type="number" id="setTotalQ" min="1" max="100" value="27" onchange="rebuildKeyGrid()"></div>
+          <div class="form-group" id="setOptionsCountGroup"><label>Options per Question</label>
             <select id="setOptionsCount" onchange="rebuildKeyGrid()">
               <option value="4">A–D (4)</option><option value="5">A–E (5)</option><option value="6">A–F (6)</option><option value="7">A–G (7)</option><option value="8" selected>A–H (8)</option>
             </select>
@@ -273,6 +273,7 @@ tbody tr:hover{background:#f8fafc}
           </div>
         </div>
 
+        <div id="mcqCreateSections">
         <div style="background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:12px;padding:14px;margin-bottom:14px">
           <div style="font-weight:800;font-size:13px;color:#065f46;margin-bottom:6px">📥 Import Answer Key (recommended)</div>
           <p style="font-size:12px;color:#065f46;margin-bottom:10px">Get another Claude chat to generate the answers, then paste its reply below — one letter per question, spaces/newlines don't matter (e.g. "ABCDE EEDHG HGCBA...").</p>
@@ -294,6 +295,24 @@ tbody tr:hover{background:#f8fafc}
 
         <h2 style="font-size:15px;margin-top:10px">Answer Key (manual entry / review)</h2>
         <div class="key-grid" id="keyGrid"></div>
+        </div>
+
+        <div id="lqCreateSection" class="hidden">
+          <div style="background:#fdf4ff;border:1.5px solid #e9d5ff;border-radius:12px;padding:14px;margin-bottom:14px">
+            <div style="font-weight:800;font-size:13px;color:#6b21a8;margin-bottom:6px">📥 Import Long Questions (recommended)</div>
+            <p style="font-size:12px;color:#6b21a8;margin-bottom:10px">Get another Claude chat to generate model answers, then paste its reply below — one line per question or sub-part, as <code>label: answer</code>. Sub-parts share a question number, e.g. <code>5a</code>, <code>5bi</code>, <code>5bii</code>. Prefix with <code>[manual]</code> for anything needing your judgement instead of an exact match.</p>
+            <button class="btn btn-ghost" onclick="copyLQClaudePrompt()">🤖 Copy Prompt for Claude</button>
+            <textarea id="lqImportText" placeholder="1: 42&#10;2: 3/4&#10;5a: x = 3&#10;5bi: [manual] Explain why the gradient is negative...&#10;5bii: 12" style="width:100%;min-height:120px;margin-top:10px;padding:10px;border:1.5px solid var(--line);border-radius:10px;font-family:monospace;font-size:13px"></textarea>
+            <button class="btn btn-primary" style="margin-top:10px" onclick="previewLQImport()">👀 Preview Import</button>
+            <div id="lqImportPreviewContainer"></div>
+          </div>
+
+          <h2 style="font-size:15px;margin-top:10px">Questions &amp; Model Answers (manual entry / review)</h2>
+          <p class="sub" style="margin-bottom:10px">Each block below is one question the student sees on one screen. Add sub-parts (a, b(i), b(ii)...) if the question is split into parts — leave the label blank for a single-part question.</p>
+          <div id="lqGrid"></div>
+          <button class="btn btn-ghost" style="margin-bottom:10px" onclick="addLQParentQuestion()">➕ Add Question</button>
+        </div>
+
         <div style="display:flex;gap:10px;margin-top:10px">
           <button class="btn btn-primary" onclick="saveSet()">💾 Save Set</button>
           <button class="btn btn-ghost hidden" id="cancelEditBtn" onclick="cancelEdit()">Cancel Edit</button>
@@ -336,6 +355,18 @@ let lastOutstanding = null; // { setId, codes, title } for the reminder-message 
 let editAnswersMode = 'timed'; // 'timed' | 'overtime' — which attempt is being manually edited
 let currentGradeBoundaries = []; // [{min, grade}, ...] for the paper currently being created/edited
 let pendingGradeBoundaries = null; // parsed-but-not-yet-applied preview of a pasted grade boundary list
+
+// ---- 16+ Long Questions state ----
+// lqStructure: { [parentQuestionNumber]: [leafLabel, ...] } — e.g. {1:[''], 5:['a','bi','bii']}.
+// A blank leaf label means "no sub-parts, just one answer for this question".
+// lqAnswerKey / lqGradingMode are keyed by the flat leaf key: parent number
+// alone if no sub-part (e.g. "1"), or parent+label if it has one (e.g. "5a", "5bi").
+let lqStructure = {};
+let lqAnswerKey = {};
+let lqGradingMode = {}; // leafKey -> 'auto' | 'manual'
+let pendingLQImport = null;
+
+function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
 let editingStudentCode = null;
 let currentResultsSetId = null;
 
@@ -517,11 +548,26 @@ function onPerfStudentSelected() {
 
 function updateQuestionCountFromPaperType() {
   const paperType = document.getElementById('setPaperType').value;
-  const questionCount = paperType === 'tmua' ? 20 : paperType === 'sat_math' ? 22 : 27;
-  const timeLimit = paperType === 'tmua' ? 75 : paperType === 'sat_math' ? 35 : 40;
+  const isLQ = paperType === 'lq_16plus';
+
+  document.getElementById('mcqCreateSections').classList.toggle('hidden', isLQ);
+  document.getElementById('lqCreateSection').classList.toggle('hidden', !isLQ);
+  document.getElementById('setOptionsCountGroup').classList.toggle('hidden', isLQ);
+  document.getElementById('setTotalQGroup').classList.toggle('hidden', isLQ);
+
+  if(isLQ) {
+    document.getElementById('setTimeLimit').value = 60;
+    if(Object.keys(lqStructure).length === 0) { for(let q=1; q<=13; q++) lqStructure[q] = ['']; }
+    document.getElementById('setTotalQ').value = Object.keys(lqStructure).length;
+    renderLQGrid();
+    return;
+  }
+
+  const questionCount = paperType === 'tmua' ? 20 : paperType === 'sat_math' ? 22 : paperType === 'sixteen_mcq' ? 8 : 27;
+  const timeLimit = paperType === 'tmua' ? 75 : paperType === 'sat_math' ? 35 : paperType === 'sixteen_mcq' ? 40 : 40;
   document.getElementById('setTotalQ').value = questionCount;
   document.getElementById('setTimeLimit').value = timeLimit;
-  if(paperType === 'sat_math') document.getElementById('setOptionsCount').value = '4';
+  if(paperType === 'sat_math' || paperType === 'sixteen_mcq') document.getElementById('setOptionsCount').value = '4';
   rebuildKeyGrid();
 }
 
@@ -580,6 +626,159 @@ function toggleGridCell(q) {
   const isGrid = document.getElementById('key_q'+q+'_isgrid').checked;
   document.getElementById('key_q'+q).classList.toggle('hidden', isGrid);
   document.getElementById('key_q'+q+'_grid').classList.toggle('hidden', !isGrid);
+}
+
+// ---- 16+ Long Questions: structure grid (one block per parent question,
+// each with one or more sub-part rows) ----
+function renderLQGrid() {
+  const container = document.getElementById('lqGrid');
+  const parents = Object.keys(lqStructure).map(Number).sort((a,b) => a-b);
+  let html = '';
+  parents.forEach(parent => {
+    const leaves = lqStructure[parent].length ? lqStructure[parent] : [''];
+    html += '<div class="key-cell" style="width:100%;text-align:left;margin-bottom:12px" id="lqParent_'+parent+'">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong>Q'+parent+'</strong>'
+      + '<span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="addLQLeaf('+parent+')">➕ Sub-part</button> '
+      + '<button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="removeLQParent('+parent+')">🗑️ Remove Q'+parent+'</button></span></div>';
+    leaves.forEach((label, i) => {
+      const leafKey = lqLeafKey(parent, label);
+      const answer = lqAnswerKey[leafKey] || '';
+      const isManual = lqGradingMode[leafKey] === 'manual';
+      html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">'
+        + '<input type="text" placeholder="label (blank = no sub-part)" value="'+label.replace(/"/g,'&quot;')+'" style="width:130px;padding:8px;border:1.5px solid var(--line);border-radius:8px;font-size:12px" onchange="updateLQLeafLabel('+parent+','+i+',this.value)">'
+        + '<input type="text" placeholder="model answer" value="'+answer.replace(/"/g,'&quot;')+'" style="flex:1;min-width:180px;padding:8px;border:1.5px solid var(--line);border-radius:8px;font-size:12px" onchange="updateLQLeafAnswer('+parent+',\''+label+'\',this.value)">'
+        + '<label style="font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" '+(isManual?'checked':'')+' onchange="updateLQLeafMode('+parent+',\''+label+'\',this.checked)"> manual mark</label>'
+        + (leaves.length > 1 ? '<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="removeLQLeaf('+parent+','+i+')">✕</button>' : '')
+        + '</div>';
+    });
+    html += '</div>';
+  });
+  container.innerHTML = html;
+  document.getElementById('setTotalQ').value = parents.length;
+}
+
+function addLQParentQuestion() {
+  const parents = Object.keys(lqStructure).map(Number);
+  const next = parents.length ? Math.max(...parents) + 1 : 1;
+  lqStructure[next] = [''];
+  renderLQGrid();
+}
+
+function removeLQParent(parent) {
+  if(!confirm('Remove Q'+parent+' and all its sub-parts?')) return;
+  Object.keys(lqAnswerKey).forEach(k => { if(lqLeafBelongsToParent(k, parent)) { delete lqAnswerKey[k]; delete lqGradingMode[k]; } });
+  delete lqStructure[parent];
+  renderLQGrid();
+}
+
+function lqLeafBelongsToParent(leafKey, parent) {
+  return String(leafKey) === String(parent) || leafKey.startsWith(String(parent)) && /^[a-zA-Z]/.test(leafKey.slice(String(parent).length));
+}
+
+function addLQLeaf(parent) {
+  lqStructure[parent].push('');
+  renderLQGrid();
+}
+
+function removeLQLeaf(parent, index) {
+  const label = lqStructure[parent][index];
+  const leafKey = lqLeafKey(parent, label);
+  delete lqAnswerKey[leafKey];
+  delete lqGradingMode[leafKey];
+  lqStructure[parent].splice(index, 1);
+  renderLQGrid();
+}
+
+function updateLQLeafLabel(parent, index, newLabel) {
+  const oldLabel = lqStructure[parent][index];
+  const oldKey = lqLeafKey(parent, oldLabel);
+  const newKey = lqLeafKey(parent, newLabel.trim());
+  lqAnswerKey[newKey] = lqAnswerKey[oldKey] || '';
+  lqGradingMode[newKey] = lqGradingMode[oldKey];
+  if(newKey !== oldKey) { delete lqAnswerKey[oldKey]; delete lqGradingMode[oldKey]; }
+  lqStructure[parent][index] = newLabel.trim();
+}
+
+function updateLQLeafAnswer(parent, label, value) {
+  lqAnswerKey[lqLeafKey(parent, label)] = value;
+}
+
+function updateLQLeafMode(parent, label, isManual) {
+  lqGradingMode[lqLeafKey(parent, label)] = isManual ? 'manual' : 'auto';
+}
+
+function copyLQClaudePrompt() {
+  const total = parseInt(document.getElementById('setTotalQ').value) || 13;
+  const prompt = 'Please give me model answers for a ' + total + '-question 16+ entrance exam Long Questions paper.\n\nReply with ONE line per question or sub-part, formatted as:\n<label>: <answer>\n\nUse plain question numbers for single-part questions (e.g. "1: 42"), and combine the question number with a sub-part letter for multi-part questions (e.g. "5a: x = 3", "5bi: ...", "5bii: ..." — no spaces, no brackets, in that exact style).\n\nFor short calculation-style answers that can be exactly matched, just give the value. For anything requiring written explanation/working that needs human judgement to mark, prefix the line with [manual], e.g. "5bi: [manual] Explain why the gradient is negative...".\n\nExample:\n1: 42\n2: 3/4\n5a: x = 3\n5bi: [manual] Explain why the gradient is negative because...\n5bii: 12\n\nJust the lines, nothing else — no headers, no extra explanation.';
+  navigator.clipboard.writeText(prompt).then(() => {
+    alert('✅ Prompt copied! Paste it into another Claude chat, get the answers back, then paste that reply into the box below.');
+  }).catch(() => {
+    window.prompt('Copy this prompt manually:', prompt);
+  });
+}
+
+// Parses "<label>: <answer>" lines, e.g. "5bi: [manual] Explain...", deriving
+// the question structure directly from the labels seen (no separate manual
+// structure-definition step needed).
+function parseLQImportText(raw) {
+  const structure = {};
+  const answerKey = {};
+  const gradingMode = {};
+  const order = [];
+  raw.split('\n').forEach(line => {
+    line = line.trim();
+    if(!line) return;
+    const m = line.match(/^(\d+)([a-zA-Z()]*)\s*:\s*(.*)$/);
+    if(!m) return;
+    const parent = parseInt(m[1]);
+    const label = m[2].trim();
+    let answer = m[3].trim();
+    let manual = false;
+    if(/^\[manual\]/i.test(answer)) { manual = true; answer = answer.replace(/^\[manual\]\s*/i, ''); }
+    if(!structure[parent]) structure[parent] = [];
+    structure[parent].push(label);
+    const leafKey = lqLeafKey(parent, label);
+    answerKey[leafKey] = answer;
+    gradingMode[leafKey] = manual ? 'manual' : 'auto';
+    order.push(leafKey);
+  });
+  return { structure, answerKey, gradingMode, order };
+}
+
+function previewLQImport() {
+  const raw = document.getElementById('lqImportText').value;
+  const parsed = parseLQImportText(raw);
+  const container = document.getElementById('lqImportPreviewContainer');
+  if(parsed.order.length === 0) {
+    container.innerHTML = '<div class="edit-warning">⚠️ No valid lines found — expected format is <code>label: answer</code> per line, e.g. "5bi: [manual] ...".</div>';
+    pendingLQImport = null;
+    return;
+  }
+  pendingLQImport = parsed;
+  let rows = parsed.order.map(leafKey => {
+    const manual = parsed.gradingMode[leafKey] === 'manual';
+    return '<div class="qrow correct"><span>' + leafKey + (manual ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(manual)</span>' : '') + '</span><span><strong>' + parsed.answerKey[leafKey] + '</strong></span></div>';
+  }).join('');
+  let html = '<div style="max-height:280px;overflow-y:auto;margin:10px 0;background:#fff;border-radius:10px;padding:6px">' + rows + '</div>';
+  html += '<div style="display:flex;gap:10px"><button class="btn btn-green" style="flex:1" onclick="applyLQImport()">✅ Apply</button><button class="btn btn-ghost" style="flex:1" onclick="cancelLQImportPreview()">Cancel</button></div>';
+  container.innerHTML = html;
+}
+
+function applyLQImport() {
+  if(!pendingLQImport) return;
+  lqStructure = pendingLQImport.structure;
+  lqAnswerKey = pendingLQImport.answerKey;
+  lqGradingMode = pendingLQImport.gradingMode;
+  pendingLQImport = null;
+  document.getElementById('lqImportPreviewContainer').innerHTML = '<div class="confirm-ready" style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600">✅ Applied. Double check the questions below, then click "💾 Save Set".</div>';
+  document.getElementById('lqImportText').value = '';
+  renderLQGrid();
+  document.getElementById('lqGrid').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function cancelLQImportPreview() {
+  pendingLQImport = null;
+  document.getElementById('lqImportPreviewContainer').innerHTML = '';
 }
 
 // ---- Import answer key from another Claude chat ----
@@ -764,33 +963,57 @@ function clearGradeBoundaries() {
 function saveSet() {
   const title = document.getElementById('setTitle').value.trim();
   const paperType = document.getElementById('setPaperType').value;
-  const total = parseInt(document.getElementById('setTotalQ').value);
-  const optCount = parseInt(document.getElementById('setOptionsCount').value);
   const timeLimit = parseInt(document.getElementById('setTimeLimit').value);
   const paperUrl = document.getElementById('setPaperUrl').value.trim();
 
   if(!title) { alert('Please enter a title'); return; }
-  if(!total || total<1) { alert('Please enter a valid question count'); return; }
   if(!paperUrl) {
     if(!confirm('No paper link added — students won\'t have anything to open when they start. Save anyway?')) return;
   }
 
-  const answerKey = {};
-  const gridQuestions = {};
-  let missing = [];
-  for(let q=1; q<=total; q++) {
-    const isGrid = document.getElementById('key_q'+q+'_isgrid').checked;
-    const val = isGrid ? document.getElementById('key_q'+q+'_grid').value.trim() : document.getElementById('key_q'+q).value;
-    if(isGrid) gridQuestions[q] = true;
-    if(!val) missing.push(q);
-    answerKey[q] = val;
-  }
-  if(missing.length > 0) {
-    if(!confirm('Questions ' + missing.join(', ') + ' have no answer set. Save anyway?')) return;
-  }
-
   const {ref,set,push,db} = window.firebaseDB;
-  const payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+  let payload;
+
+  if(paperType === 'lq_16plus') {
+    const parents = Object.keys(lqStructure).map(Number).sort((a,b) => a-b);
+    if(parents.length === 0) { alert('Please add at least one question'); return; }
+    let missing = [];
+    parents.forEach(parent => {
+      lqStructure[parent].forEach(label => {
+        const leafKey = lqLeafKey(parent, label);
+        if(!lqAnswerKey[leafKey]) missing.push(leafKey);
+      });
+    });
+    if(missing.length > 0) {
+      if(!confirm('These have no model answer set: ' + missing.join(', ') + '. Save anyway?')) return;
+    }
+    payload = {
+      title, paperType, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null,
+      totalQuestions: parents.length,
+      structure: lqStructure, answerKey: lqAnswerKey, gradingMode: lqGradingMode,
+      gradeBoundaries: currentGradeBoundaries,
+      createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now()
+    };
+  } else {
+    const total = parseInt(document.getElementById('setTotalQ').value);
+    const optCount = parseInt(document.getElementById('setOptionsCount').value);
+    if(!total || total<1) { alert('Please enter a valid question count'); return; }
+
+    const answerKey = {};
+    const gridQuestions = {};
+    let missing = [];
+    for(let q=1; q<=total; q++) {
+      const isGrid = document.getElementById('key_q'+q+'_isgrid').checked;
+      const val = isGrid ? document.getElementById('key_q'+q+'_grid').value.trim() : document.getElementById('key_q'+q).value;
+      if(isGrid) gridQuestions[q] = true;
+      if(!val) missing.push(q);
+      answerKey[q] = val;
+    }
+    if(missing.length > 0) {
+      if(!confirm('Questions ' + missing.join(', ') + ' have no answer set. Save anyway?')) return;
+    }
+    payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+  }
 
   const setId = editingSetId || push(ref(db,'homeworkSets')).key;
   set(ref(db,'homeworkSets/'+setId), payload).then(() => {
@@ -815,6 +1038,13 @@ function cancelEdit() {
   document.getElementById('gradeBoundaryText').value = '';
   document.getElementById('gradeBoundaryPreviewContainer').innerHTML = '';
   renderCurrentGradeBoundariesTable();
+  lqStructure = {}; lqAnswerKey = {}; lqGradingMode = {}; pendingLQImport = null;
+  document.getElementById('lqImportText').value = '';
+  document.getElementById('lqImportPreviewContainer').innerHTML = '';
+  document.getElementById('mcqCreateSections').classList.remove('hidden');
+  document.getElementById('lqCreateSection').classList.add('hidden');
+  document.getElementById('setOptionsCountGroup').classList.remove('hidden');
+  document.getElementById('setTotalQGroup').classList.remove('hidden');
   rebuildKeyGrid();
 }
 
@@ -826,8 +1056,6 @@ async function editSet(setId) {
   document.getElementById('cancelEditBtn').classList.remove('hidden');
   document.getElementById('setTitle').value = s.title;
   document.getElementById('setPaperType').value = s.paperType || 'esat';
-  document.getElementById('setTotalQ').value = s.totalQuestions;
-  document.getElementById('setOptionsCount').value = s.optionsCount;
   document.getElementById('setTimeLimit').value = s.timeLimitMinutes;
   document.getElementById('setPaperUrl').value = s.paperUrl || '';
   currentGradeBoundaries = s.gradeBoundaries || [];
@@ -835,17 +1063,36 @@ async function editSet(setId) {
   document.getElementById('gradeBoundaryText').value = '';
   document.getElementById('gradeBoundaryPreviewContainer').innerHTML = '';
   renderCurrentGradeBoundariesTable();
-  rebuildKeyGrid();
-  for(let q=1; q<=s.totalQuestions; q++) {
-    const isGrid = !!(s.gridQuestions && s.gridQuestions[q]);
-    if(isGrid) {
-      const cb = document.getElementById('key_q'+q+'_isgrid');
-      if(cb) { cb.checked = true; toggleGridCell(q); }
-      const gridEl = document.getElementById('key_q'+q+'_grid');
-      if(gridEl && s.answerKey && s.answerKey[q]) gridEl.value = s.answerKey[q];
-    } else if(s.answerKey && s.answerKey[q]) {
-      const el = document.getElementById('key_q'+q);
-      if(el) el.value = s.answerKey[q];
+
+  const isLQ = s.paperType === 'lq_16plus';
+  document.getElementById('mcqCreateSections').classList.toggle('hidden', isLQ);
+  document.getElementById('lqCreateSection').classList.toggle('hidden', !isLQ);
+  document.getElementById('setOptionsCountGroup').classList.toggle('hidden', isLQ);
+  document.getElementById('setTotalQGroup').classList.toggle('hidden', isLQ);
+
+  if(isLQ) {
+    lqStructure = JSON.parse(JSON.stringify(s.structure || {}));
+    lqAnswerKey = Object.assign({}, s.answerKey || {});
+    lqGradingMode = Object.assign({}, s.gradingMode || {});
+    pendingLQImport = null;
+    document.getElementById('lqImportText').value = '';
+    document.getElementById('lqImportPreviewContainer').innerHTML = '';
+    renderLQGrid();
+  } else {
+    document.getElementById('setTotalQ').value = s.totalQuestions;
+    document.getElementById('setOptionsCount').value = s.optionsCount;
+    rebuildKeyGrid();
+    for(let q=1; q<=s.totalQuestions; q++) {
+      const isGrid = !!(s.gridQuestions && s.gridQuestions[q]);
+      if(isGrid) {
+        const cb = document.getElementById('key_q'+q+'_isgrid');
+        if(cb) { cb.checked = true; toggleGridCell(q); }
+        const gridEl = document.getElementById('key_q'+q+'_grid');
+        if(gridEl && s.answerKey && s.answerKey[q]) gridEl.value = s.answerKey[q];
+      } else if(s.answerKey && s.answerKey[q]) {
+        const el = document.getElementById('key_q'+q);
+        if(el) el.value = s.answerKey[q];
+      }
     }
   }
 
@@ -873,9 +1120,11 @@ function deleteSet(setId) {
 // Papers created before "Paper Type" existed have no paperType and are
 // treated as Physics (the old default), matching the performance charts.
 const PAPER_TYPE_GROUPS = [
-  { key: 'tmua',     label: 'Maths' },
-  { key: 'esat',     label: 'Physics' },
-  { key: 'sat_math', label: 'SAT Math' }
+  { key: 'tmua',       label: 'Maths' },
+  { key: 'esat',       label: 'Physics' },
+  { key: 'sat_math',   label: 'SAT Math' },
+  { key: 'sixteen_mcq', label: '16+ MCQ' },
+  { key: 'lq_16plus',  label: '16+ Long Questions' }
 ];
 
 function paperTypeOf(s) {
@@ -966,8 +1215,44 @@ function answersMatch(given, correct) {
   return acceptable.includes(String(given).trim().toLowerCase());
 }
 
-function computeScoreAgainst(answers, set) {
+// Every leaf key for a 16+ Long Questions paper — a leaf is a sub-part
+// (e.g. "5bi") if the parent question has sub-parts, or just the parent
+// number itself (e.g. "1") if it doesn't.
+function lqAllLeafKeys(set) {
+  const keys = [];
+  Object.keys(set.structure || {}).map(Number).sort((a,b)=>a-b).forEach(parent => {
+    (set.structure[parent].length ? set.structure[parent] : ['']).forEach(label => keys.push(lqLeafKey(parent, label)));
+  });
+  return keys;
+}
+
+// manualMarks: { [leafKey]: true|false }, admin-entered correctness for
+// leaves marked 'manual' in set.gradingMode — undefined means not yet marked
+// ("pending"), which counts toward total but not toward score.
+// excludeManual: true for overtime attempts — those are self-check only
+// (students see the model answer after submitting), so manual leaves are
+// left out of the score/total entirely rather than sitting pending forever.
+function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
   answers = answers || {};
+  manualMarks = manualMarks || {};
+
+  if(set.paperType === 'lq_16plus') {
+    const leaves = lqAllLeafKeys(set);
+    let score = 0, pending = 0, total = 0;
+    leaves.forEach(leafKey => {
+      const isManual = (set.gradingMode || {})[leafKey] === 'manual';
+      if(isManual && excludeManual) return; // not counted at all for overtime
+      total++;
+      if(isManual) {
+        if(manualMarks[leafKey] === true) score++;
+        else if(manualMarks[leafKey] !== false) pending++;
+      } else if(answersMatch(answers[leafKey], (set.answerKey||{})[leafKey])) {
+        score++;
+      }
+    });
+    return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0, pending };
+  }
+
   let score = 0;
   const total = set.totalQuestions;
   for(let q=1; q<=total; q++) {
@@ -997,8 +1282,8 @@ function renderResults(setId) {
   // stored score fields — if the key gets corrected after students submit,
   // this keeps the table accurate without a manual per-student fix.
   const withLiveScores = subs.map(([code,s]) => {
-    const live = computeScoreAgainst(s.timedAnswers, set);
-    const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set) : null;
+    const live = computeScoreAgainst(s.timedAnswers, set, s.manualMarks);
+    const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set, s.manualMarks, true) : null;
     return { code, s, live, overtimeLive, stale: live.score !== s.timedScore };
   });
 
@@ -1065,7 +1350,8 @@ function renderResults(setId) {
     const overtimeCell = overtimeLive ? '<span class="pill mid">'+overtimeLive.pct+'%</span>' : '<span class="pill pending">—</span>';
     const ts = new Date(s.timedSubmittedAt).toLocaleString('en-GB');
     const flagTag = (s.flaggedQuestions && s.flaggedQuestions.length) ? ' <span title="Has questions flagged for review">🚩</span>' : '';
-    html += '<tr onclick="showBreakdown(\''+code+'\')"><td><strong>'+code+'</strong>'+flagTag+'</td><td>'+name+'</td><td>'+live.score+' / '+live.total+(stale?'<span class="recalc-flag">recalculated</span>':'')+'</td><td><span class="pill '+pillClass+'">'+live.pct+'%</span></td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td><td>'+ts+'</td></tr>';
+    const pendingTag = live.pending ? ' <span style="color:var(--gold);font-weight:800" title="Parts still need your marking">⏳ ' + live.pending + '</span>' : '';
+    html += '<tr onclick="showBreakdown(\''+code+'\')"><td><strong>'+code+'</strong>'+flagTag+'</td><td>'+name+'</td><td>'+live.score+' / '+live.total+(stale?'<span class="recalc-flag">recalculated</span>':'')+'</td><td><span class="pill '+pillClass+'">'+live.pct+'%</span>'+pendingTag+'</td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td><td>'+ts+'</td></tr>';
   });
   html += '</tbody></table></div>';
 
@@ -1089,8 +1375,8 @@ function exportResultsCsv() {
   const subs = Object.entries(allSubmissions).filter(([code,s]) => s.timedSubmittedAt);
   let csv = 'Code,Name,Timed Score,Timed Total,Timed %,Overtime Score,Overtime %,Submitted At\n';
   subs.forEach(([code,s]) => {
-    const live = computeScoreAgainst(s.timedAnswers, set);
-    const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set) : null;
+    const live = computeScoreAgainst(s.timedAnswers, set, s.manualMarks);
+    const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set, s.manualMarks, true) : null;
     const name = studentName(code).replace(/,/g,' ');
     const ts = new Date(s.timedSubmittedAt).toLocaleString('en-GB');
     csv += [code, name, live.score, live.total, live.pct, overtimeLive?overtimeLive.score:'', overtimeLive?overtimeLive.pct:'', ts].join(',') + '\n';
@@ -1113,11 +1399,11 @@ async function recalculateAllScores() {
   for(const [code, s] of subs) {
     const updates = {};
     if(s.timedSubmittedAt) {
-      const live = computeScoreAgainst(s.timedAnswers, set);
+      const live = computeScoreAgainst(s.timedAnswers, set, s.manualMarks);
       updates.timedScore = live.score; updates.timedTotal = live.total; updates.timedPercentage = live.pct;
     }
     if(s.overtimeSubmittedAt) {
-      const liveOt = computeScoreAgainst(s.overtimeAnswers, set);
+      const liveOt = computeScoreAgainst(s.overtimeAnswers, set, s.manualMarks, true);
       updates.overtimeScore = liveOt.score; updates.overtimeTotal = liveOt.total; updates.overtimePercentage = liveOt.pct;
     }
     if(Object.keys(updates).length) {
@@ -1146,9 +1432,17 @@ function showBreakdownFor(setId, code) {
     html += '<div class="edit-warning" style="background:var(--gold-bg,#fef3c7);border-color:#fbbf24;color:#92400e">🚩 <strong>Flagged for review:</strong> Q' + flagged.join(', Q') + ' — ' + name + ' wants to go over ' + (flagged.length===1?'this question':'these questions') + ' with you in a lesson.</div>';
   }
 
-  html += buildBreakdownSection('Timed Attempt', s.timedAnswers, set, flagged);
-  if(s.overtimeSubmittedAt) {
-    html += buildBreakdownSection('Overtime Attempt', s.overtimeAnswers, set, flagged);
+  const isLQ = set.paperType === 'lq_16plus';
+  if(isLQ) {
+    html += buildLQBreakdownSection('Timed Attempt', s.timedAnswers, set, s.manualMarks, flagged, setId, code, 'timed');
+    if(s.overtimeSubmittedAt) {
+      html += buildLQBreakdownSection('Overtime Attempt', s.overtimeAnswers, set, s.manualMarks, flagged, setId, code, 'overtime');
+    }
+  } else {
+    html += buildBreakdownSection('Timed Attempt', s.timedAnswers, set, flagged);
+    if(s.overtimeSubmittedAt) {
+      html += buildBreakdownSection('Overtime Attempt', s.overtimeAnswers, set, flagged);
+    }
   }
 
   // Recovery tool for the "shows as not submitted despite the student having
@@ -1160,11 +1454,122 @@ function showBreakdownFor(setId, code) {
   const promoteBtn = hasSourceToPromote
     ? '<button class="btn btn-green" style="flex:1" onclick="markAsSubmittedWithinTime(\''+setId+'\',\''+code+'\')">✅ Mark Submitted (Within Time)</button>'
     : '';
+  const editAnswersBtn = isLQ ? '' : '<button class="btn btn-ghost" style="flex:1" onclick="openEditAnswersModal(\''+setId+'\',\''+code+'\')">✏️ Edit Answers</button>';
 
-  html += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">' + promoteBtn + '<button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button><button class="btn btn-ghost" style="flex:1" onclick="openEditAnswersModal(\''+setId+'\',\''+code+'\')">✏️ Edit Answers</button><button class="btn btn-danger" style="flex:1" onclick="deleteAttempt(\''+setId+'\',\''+code+'\')">🗑️ Delete Attempt</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
+  html += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">' + promoteBtn + '<button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button>' + editAnswersBtn + '<button class="btn btn-danger" style="flex:1" onclick="deleteAttempt(\''+setId+'\',\''+code+'\')">🗑️ Delete Attempt</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
 
   document.getElementById('breakdownModalContent').innerHTML = html;
   document.getElementById('breakdownModal').classList.add('show');
+}
+
+// ---- 16+ Long Questions: breakdown + marking UI. Auto-graded leaves show
+// correct/incorrect like normal; manual leaves show the student's answer
+// next to your model answer with a correct/incorrect toggle you set
+// yourself, plus a per-attempt "Copy Prompt for Claude" to help you judge.
+function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setId, code, attemptMode) {
+  answers = answers || {};
+  manualMarks = manualMarks || {};
+  flagged = flagged || [];
+  // Overtime is self-check only — students see the model answer themselves
+  // after submitting, so manual parts are never officially marked there.
+  // Only the timed attempt goes through your marking workflow.
+  const isOvertime = attemptMode === 'overtime';
+  const parents = Object.keys(set.structure || {}).map(Number).sort((a,b)=>a-b);
+  let correct = 0, incorrect = 0, notAttempted = 0, pending = 0, total = 0;
+  let rows = '';
+  parents.forEach(parent => {
+    const leaves = (set.structure[parent].length ? set.structure[parent] : ['']);
+    const flagTag = flagged.includes(parent) ? ' <span title="Flagged for review by the student">🚩</span>' : '';
+    rows += '<div style="font-weight:800;font-size:13px;color:var(--brand);margin:10px 0 4px">Q'+parent+flagTag+'</div>';
+    leaves.forEach(label2 => {
+      const leafKey = lqLeafKey(parent, label2);
+      const given = answers[leafKey];
+      const modelAnswer = (set.answerKey||{})[leafKey] || '';
+      const isManual = (set.gradingMode||{})[leafKey] === 'manual';
+      const displayLabel = label2 ? ('('+label2+')') : '';
+      let cls, verdict, markControl = '';
+
+      if(isManual && isOvertime) {
+        // Not counted toward the overtime total at all — self-check only.
+        cls = given ? 'notattempted' : 'notattempted';
+        verdict = 'Self-check — model answer: ' + String(modelAnswer||'').split('|').join(' or ');
+      } else {
+        total++;
+        if(!given) {
+          notAttempted++; cls='notattempted'; verdict='— Not attempted';
+        } else if(isManual) {
+          const mark = manualMarks[leafKey];
+          markControl = '<label style="font-size:11px;font-weight:700;margin-left:8px"><input type="checkbox" class="lq-mark-cb" data-leaf="'+leafKey+'" '+(mark===true?'checked':'')+'> correct</label>';
+          if(mark === true) { correct++; cls='correct'; verdict='✓ Marked correct'; }
+          else if(mark === false) { incorrect++; cls='incorrect'; verdict='✗ Marked incorrect'; }
+          else { pending++; cls='notattempted'; verdict='⏳ Pending your marking'; }
+        } else if(answersMatch(given, modelAnswer)) {
+          correct++; cls='correct'; verdict='✓ Correct';
+        } else {
+          incorrect++; cls='incorrect'; verdict='✗ Model answer: '+String(modelAnswer||'').split('|').join(' or ');
+        }
+      }
+      rows += '<div class="qrow '+cls+'"><span>'+displayLabel+' answered <strong>'+(given||'—')+'</strong>'+(isManual&&!isOvertime?' <span style="color:var(--muted);font-weight:600;font-size:11px">(model: '+modelAnswer+')</span>':'')+'</span><span>'+verdict+markControl+'</span></div>';
+    });
+  });
+  const grade = computeGrade(correct, set.gradeBoundaries);
+  const gradeText = grade !== null ? ' <span style="color:var(--brand);font-weight:800">— Grade: '+grade+'</span>' : '';
+  const pendingText = pending > 0 ? ' <span style="color:var(--gold);font-weight:800">('+pending+' pending marking)</span>' : '';
+  let header = '<h3 style="font-size:14px;margin:14px 0 8px;color:var(--brand)">'+label+' — '+correct+' / '+total+' correct <span style="color:var(--muted);font-weight:600;font-size:12px">('+incorrect+' wrong, '+notAttempted+' not attempted)</span>'+pendingText+gradeText+'</h3>';
+  let footer = isOvertime ? '' : '<div style="display:flex;gap:10px;margin-top:8px"><button class="btn btn-ghost" onclick="copyLQMarkingPrompt(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">🤖 Copy Prompt for Claude (marking help)</button><button class="btn btn-primary" onclick="saveLQMarks(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">💾 Save Marks</button></div>';
+  return header + rows + footer;
+}
+
+function copyLQMarkingPrompt(setId, code) {
+  const allSubsForSet = (setId === currentResultsSetId) ? allSubmissions : null;
+  const s = allSubsForSet ? allSubsForSet[code] : lastLoadedDetailSubs[setId];
+  const set = homeworkSets[setId];
+  if(!s || !set) return;
+  const answers = s.timedAnswers || {};
+  let lines = [];
+  Object.keys(set.structure || {}).map(Number).sort((a,b)=>a-b).forEach(parent => {
+    (set.structure[parent].length ? set.structure[parent] : ['']).forEach(label => {
+      const leafKey = lqLeafKey(parent, label);
+      if((set.gradingMode||{})[leafKey] !== 'manual') return;
+      lines.push('Q'+parent+(label?'('+label+')':'')+':\nModel answer: '+((set.answerKey||{})[leafKey]||'—')+'\nStudent answer: '+(answers[leafKey]||'— not attempted —'));
+    });
+  });
+  if(lines.length === 0) { alert('No manually-marked questions on this paper.'); return; }
+  const prompt = 'I\'m marking a student\'s answers against my model answers for a 16+ entrance exam question. For each one below, tell me whether you\'d mark it correct or incorrect, with a one-line reason.\n\n' + lines.join('\n\n');
+  navigator.clipboard.writeText(prompt).then(() => {
+    alert('✅ Prompt copied! Paste it into another Claude chat for a second opinion, then tick the boxes above based on your own judgement and click "💾 Save Marks".');
+  }).catch(() => {
+    window.prompt('Copy this prompt manually:', prompt);
+  });
+}
+
+async function saveLQMarks(setId, code, attemptMode) {
+  const allSubsForSet = (setId === currentResultsSetId) ? allSubmissions : null;
+  const s = allSubsForSet ? allSubsForSet[code] : lastLoadedDetailSubs[setId];
+  const set = homeworkSets[setId];
+  if(!s || !set) return;
+
+  const manualMarks = Object.assign({}, s.manualMarks || {});
+  document.querySelectorAll('.lq-mark-cb').forEach(cb => { manualMarks[cb.dataset.leaf] = cb.checked; });
+
+  const timedLive = s.timedSubmittedAt ? computeScoreAgainst(s.timedAnswers, set, manualMarks) : null;
+  const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set, manualMarks, true) : null;
+
+  const fields = { manualMarks };
+  if(timedLive) { fields.timedScore = timedLive.score; fields.timedTotal = timedLive.total; fields.timedPercentage = timedLive.pct; }
+  if(overtimeLive) { fields.overtimeScore = overtimeLive.score; fields.overtimeTotal = overtimeLive.total; fields.overtimePercentage = overtimeLive.pct; }
+
+  const {ref,update,db} = window.firebaseDB;
+  try {
+    await update(ref(db,'submissions/'+setId+'/'+code), fields);
+    alert('✅ Marks saved.');
+    closeBreakdown();
+    if(setId === currentResultsSetId) loadResultsForSet();
+    const byStudentViewVisible = document.getElementById('perfByStudent').style.display !== 'none';
+    if(byStudentViewVisible && code === currentDetailCode) openStudentDetail(code);
+  } catch(err) {
+    alert('❌ Failed: ' + err);
+  }
 }
 
 // ---- Recovery: promote overtime/draft answers into the official timed
@@ -1193,7 +1598,7 @@ async function markAsSubmittedWithinTime(setId, code) {
     + '\n\nOnly do this if you\'re confident they genuinely finished within the time limit and this is fixing a technical glitch, not overriding a real result.';
   if(!confirm(msg)) return;
 
-  const live = computeScoreAgainst(sourceAnswers, set);
+  const live = computeScoreAgainst(sourceAnswers, set, s.manualMarks);
   const {ref,update,db} = window.firebaseDB;
   const fields = {
     timedAnswers: sourceAnswers,
@@ -1634,8 +2039,8 @@ function renderStudentDetailTable(code, rows) {
   rows.forEach(({setId, set, sub}) => {
     const started = sub.startedAt ? new Date(sub.startedAt).toLocaleString('en-GB') : '—';
     const submitted = sub.timedSubmittedAt ? new Date(sub.timedSubmittedAt).toLocaleString('en-GB') : '<span style="color:var(--gold)">not submitted</span>';
-    const live = sub.timedSubmittedAt ? computeScoreAgainst(sub.timedAnswers, set) : null;
-    const overtimeLive = sub.overtimeSubmittedAt ? computeScoreAgainst(sub.overtimeAnswers, set) : null;
+    const live = sub.timedSubmittedAt ? computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks) : null;
+    const overtimeLive = sub.overtimeSubmittedAt ? computeScoreAgainst(sub.overtimeAnswers, set, sub.manualMarks, true) : null;
     const pillClass = live ? (live.pct>=70?'good':live.pct>=50?'mid':'bad') : null;
     const timedCell = live ? '<span class="pill '+pillClass+'">'+live.pct+'%</span>' : '—';
     // Grade normally comes from the timed score, but falls back to the
@@ -1660,17 +2065,14 @@ function renderStudentPerformanceChart(rows) {
     return;
   }
 
-  // Papers created before "Paper Type" existed default to Physics (stored
-  // internally as paperType 'esat' — only the display label changed).
-  const mathsRows = submittedRows.filter(r => (r.set.paperType || 'esat') === 'tmua');
-  const physicsRows = submittedRows.filter(r => (r.set.paperType || 'esat') !== 'tmua');
-
   let html = '';
-  html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin-bottom:8px">Maths</h3>';
-  html += buildSingleChartSvg(mathsRows);
-  html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin:18px 0 8px">Physics</h3>';
-  html += buildSingleChartSvg(physicsRows);
-  container.innerHTML = html;
+  PAPER_TYPE_GROUPS.forEach(group => {
+    const groupRows = submittedRows.filter(r => paperTypeOf(r.set) === group.key);
+    if(groupRows.length === 0) return;
+    html += '<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;font-weight:800;margin:18px 0 8px">' + group.label + '</h3>';
+    html += buildSingleChartSvg(groupRows);
+  });
+  container.innerHTML = html || '<div class="empty">No completed papers yet to chart.</div>';
 }
 
 function buildSingleChartSvg(rowsForType) {
@@ -1680,7 +2082,7 @@ function buildSingleChartSvg(rowsForType) {
 
   const dataPoints = rowsForType.map(({set, sub}) => ({
     label: set.title,
-    score: computeScoreAgainst(sub.timedAnswers, set).pct
+    score: computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks).pct
   }));
 
   const width = 640, height = 260, padTop = 30, padBottom = 50, padLeft = 44, padRight = 20;

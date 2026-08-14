@@ -510,12 +510,12 @@ async function renderMyProgress() {
     return;
   }
 
-  const avgPct = Math.round(rows.reduce((sum,r) => sum + computeScoreAgainstSet(r.sub.timedAnswers, r.set).pct, 0) / rows.length * 10) / 10;
+  const avgPct = Math.round(rows.reduce((sum,r) => sum + computeScoreAgainstSet(r.sub.timedAnswers, r.set, r.sub.manualMarks).pct, 0) / rows.length * 10) / 10;
   chartEl.innerHTML = '<div class="progress-score-summary"><div class="big">'+avgPct+'%</div><div class="small">Average across '+rows.length+' completed paper'+(rows.length>1?'s':'')+'</div></div>' + buildProgressChartSvg(rows);
 
   let tableHtml = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase"><th style="padding:8px 4px">Paper</th><th style="padding:8px 4px">Date</th><th style="padding:8px 4px;text-align:right">Score</th><th style="padding:8px 4px;text-align:right">Grade</th></tr></thead><tbody>';
   rows.slice().reverse().forEach(({set, sub}) => {
-    const live = computeScoreAgainstSet(sub.timedAnswers, set);
+    const live = computeScoreAgainstSet(sub.timedAnswers, set, sub.manualMarks);
     const date = new Date(sub.timedSubmittedAt).toLocaleDateString('en-GB');
     const grade = computeGrade(live.score, set.gradeBoundaries);
     tableHtml += '<tr style="border-top:1px solid var(--line)"><td style="padding:9px 4px;font-weight:700">'+set.title+'</td><td style="padding:9px 4px;color:var(--muted)">'+date+'</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+live.pct+'%</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+(grade!==null?grade:'—')+'</td></tr>';
@@ -524,14 +524,8 @@ async function renderMyProgress() {
   tableEl.innerHTML = tableHtml;
 }
 
-function computeScoreAgainstSet(answers, set) {
-  answers = answers || {};
-  let score = 0;
-  const total = set.totalQuestions;
-  for(let q=1; q<=total; q++) {
-    if(answersMatch(answers[q], set.answerKey[q])) score++;
-  }
-  return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0 };
+function computeScoreAgainstSet(answers, set, manualMarks) {
+  return computeScoreAgainst(answers, set, manualMarks);
 }
 
 function buildProgressChartSvg(rows) {
@@ -541,7 +535,7 @@ function buildProgressChartSvg(rows) {
   const stepX = rows.length > 1 ? plotW / (rows.length - 1) : 0;
 
   const points = rows.map(({set, sub}, i) => {
-    const pct = computeScoreAgainstSet(sub.timedAnswers, set).pct;
+    const pct = computeScoreAgainstSet(sub.timedAnswers, set, sub.manualMarks).pct;
     return {
       x: padLeft + (rows.length > 1 ? i*stepX : plotW/2),
       y: padTop + plotH - (pct/100)*plotH,
@@ -846,16 +840,36 @@ function setupExam(mode) {
   renderCurrentQuestion();
 }
 
+// LQ parent question numbers aren't necessarily sequential (e.g. 1, 2, 5 if
+// questions were added/removed/imported out of order) — currentQIndex is a
+// position (0, 1, 2...), so this maps that position to the real parent
+// number the student should see on screen.
+function lqParentNumbers(set) {
+  return Object.keys(set.structure || {}).map(Number).sort((a,b) => a-b);
+}
+
 function renderCurrentQuestion() {
   const total = currentSet.totalQuestions;
-  const q = currentQIndex + 1;
+  const isLQ = currentSet.paperType === 'lq_16plus';
+  const q = isLQ ? lqParentNumbers(currentSet)[currentQIndex] : (currentQIndex + 1);
 
   document.getElementById('examTitle').textContent = currentSet.title;
-  document.getElementById('qCounterText').textContent = 'Q' + q + ' of ' + total;
+  document.getElementById('qCounterText').textContent = 'Q' + (currentQIndex+1) + ' of ' + total;
   document.getElementById('examQNum').textContent = 'Question ' + q;
 
   const isGrid = !!(currentSet.gridQuestions && currentSet.gridQuestions[q]);
-  if(isGrid) {
+  if(isLQ) {
+    const leaves = (currentSet.structure && currentSet.structure[q] && currentSet.structure[q].length) ? currentSet.structure[q] : [''];
+    let html = '<p style="font-size:13px;color:var(--muted);margin-bottom:14px">No options here — type your answer for each part below.</p>';
+    leaves.forEach(label => {
+      const leafKey = lqLeafKey(q, label);
+      const currentVal = (currentAnswers[leafKey] || '').replace(/"/g, '&quot;');
+      const rowLabel = label ? ('('+label+')') : ('Q'+q);
+      html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:6px;color:var(--brand)">'+rowLabel+'</label>'
+        + '<input type="text" value="'+currentVal+'" oninput="setLQAnswer(\''+leafKey+'\',this.value)" onblur="commitLQAnswer(\''+leafKey+'\',this.value)" style="width:100%;padding:14px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;font-weight:700;font-family:\'DM Sans\',sans-serif" placeholder="Your answer"></div>';
+    });
+    document.getElementById('examOptions').innerHTML = html;
+  } else if(isGrid) {
     const currentVal = (currentAnswers[q] || '').replace(/"/g, '&quot;');
     document.getElementById('examOptions').innerHTML =
       '<p style="font-size:13px;color:var(--muted);margin-bottom:10px">This question has no options — type your answer (e.g. a whole number, decimal, or fraction like 3/4).</p>'
@@ -886,7 +900,7 @@ function renderCurrentQuestion() {
 }
 
 function toggleFlag() {
-  const q = currentQIndex + 1;
+  const q = currentSet.paperType === 'lq_16plus' ? lqParentNumbers(currentSet)[currentQIndex] : (currentQIndex + 1);
   if(flaggedQuestions.has(q)) flaggedQuestions.delete(q); else flaggedQuestions.add(q);
   renderCurrentQuestion();
   saveFlags();
@@ -947,18 +961,31 @@ function jumpToQuestion(idx) {
   renderCurrentQuestion();
 }
 
+// For a normal question, "answered" is just currentAnswers[q]. For a 16+
+// Long Question (which can have several sub-part answer boxes under one
+// parent), it's "answered" if AT LEAST ONE of its sub-parts has something
+// typed in — and the nav cell shows how many of its parts are filled.
+function isLQParentAnswered(q) {
+  const leaves = (currentSet.structure && currentSet.structure[q] && currentSet.structure[q].length) ? currentSet.structure[q] : [''];
+  return leaves.some(label => !!currentAnswers[lqLeafKey(q, label)]);
+}
+
 function openNavigator() {
   const total = currentSet.totalQuestions;
+  const isLQ = currentSet.paperType === 'lq_16plus';
+  const parents = isLQ ? lqParentNumbers(currentSet) : null;
   let html = '';
-  for(let q=1; q<=total; q++) {
-    const answered = !!currentAnswers[q];
-    const isCurrent = (q === currentQIndex+1);
+  let answeredCount = 0;
+  for(let pos=0; pos<total; pos++) {
+    const q = isLQ ? parents[pos] : (pos + 1);
+    const answered = isLQ ? isLQParentAnswered(q) : !!currentAnswers[q];
+    if(answered) answeredCount++;
+    const isCurrent = (pos === currentQIndex);
     const isFlagged = flaggedQuestions.has(q);
-    const cellLabel = answered ? ('Q'+q+'<div class="nav-cell-choice">'+currentAnswers[q]+'</div>') : String(q);
-    html += '<div class="nav-cell'+(answered?' answered':'')+(isCurrent?' current':'')+(isFlagged?' flagged':'')+'" onclick="jumpToQuestion('+(q-1)+')">'+cellLabel+'</div>';
+    const cellLabel = isLQ ? ('Q'+q) : (answered ? ('Q'+q+'<div class="nav-cell-choice">'+currentAnswers[q]+'</div>') : String(q));
+    html += '<div class="nav-cell'+(answered?' answered':'')+(isCurrent?' current':'')+(isFlagged?' flagged':'')+'" onclick="jumpToQuestion('+pos+')">'+cellLabel+'</div>';
   }
   document.getElementById('navGrid').innerHTML = html;
-  const answeredCount = Object.keys(currentAnswers).filter(q => currentAnswers[q]).length;
   document.getElementById('navSummary').textContent = answeredCount + ' of ' + total + ' answered · ' + flaggedQuestions.size + ' flagged · ' + (total-answeredCount) + ' unanswered';
   document.getElementById('navigatorModal').classList.add('show');
 }
@@ -997,6 +1024,25 @@ function commitGridAnswer(value) {
   }
 }
 
+// 16+ Long Questions: same in-memory-then-commit pattern as grid-in, but
+// keyed by leaf (e.g. "5bi") instead of by parent question number, since one
+// screen can hold several separate sub-part answer boxes.
+function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
+
+function setLQAnswer(leafKey, value) {
+  currentAnswers[leafKey] = value;
+}
+
+function commitLQAnswer(leafKey, value) {
+  currentAnswers[leafKey] = value;
+  if(!value) return;
+  logEvent('answer', { question: leafKey, answer: value, mode: currentMode });
+  if(currentMode === 'timed') {
+    const {ref,update,db} = window.firebaseDB;
+    update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
+  }
+}
+
 // For grid-in questions the stored correct answer may list several accepted
 // equivalent forms separated by "|" (e.g. "3/4|0.75") — any one matches.
 // Comparison is trimmed + case-insensitive.
@@ -1006,13 +1052,19 @@ function answersMatch(given, correct) {
   return acceptable.includes(String(given).trim().toLowerCase());
 }
 
+// Every leaf key for a 16+ Long Questions paper (see admin.html's identical
+// helper) — a leaf is a sub-part (e.g. "5bi") if the parent question has
+// sub-parts, or just the parent number itself if it doesn't.
+function lqAllLeafKeys(set) {
+  const keys = [];
+  Object.keys(set.structure || {}).map(Number).sort((a,b)=>a-b).forEach(parent => {
+    (set.structure[parent].length ? set.structure[parent] : ['']).forEach(label => keys.push(lqLeafKey(parent, label)));
+  });
+  return keys;
+}
+
 function computeScore(answers) {
-  let score = 0;
-  const total = currentSet.totalQuestions;
-  for(let q=1; q<=total; q++) {
-    if(answersMatch(answers[q], currentSet.answerKey[q])) score++;
-  }
-  return { score, total, pct: Math.round((score/total)*1000)/10 };
+  return computeScoreAgainst(answers, currentSet);
 }
 
 // Writes submission fields with a few retries on transient network failures
@@ -1068,9 +1120,13 @@ async function finalizeTimed(finalizedAt) {
 // ---- Submit confirmation step ----
 function openSubmitConfirm() {
   const total = currentSet.totalQuestions;
-  const answeredCount = Object.keys(currentAnswers).filter(q => currentAnswers[q]).length;
+  const isLQ = currentSet.paperType === 'lq_16plus';
+  const questionNumbers = isLQ ? lqParentNumbers(currentSet) : Array.from({length: total}, (_, i) => i+1);
   const unanswered = [];
-  for(let q=1; q<=total; q++) if(!currentAnswers[q]) unanswered.push(q);
+  questionNumbers.forEach(q => {
+    const answered = isLQ ? isLQParentAnswered(q) : !!currentAnswers[q];
+    if(!answered) unanswered.push(q);
+  });
 
   const banner = document.getElementById('submitConfirmBanner');
   if(unanswered.length > 0) {
@@ -1143,22 +1199,24 @@ function showResults(sub, showOvertimeToo) {
   // the tutor corrects a mistake in the key later, results shown here stay
   // accurate without needing a manual fix per student.
   const liveSet = homeworkSets[currentSetId] || currentSet;
-  const timedLive = computeScoreAgainst(sub.timedAnswers, liveSet);
+  const manualMarks = sub.manualMarks;
+  const timedLive = computeScoreAgainst(sub.timedAnswers, liveSet, manualMarks);
   const keyChanged = sub.timedScore !== timedLive.score;
+  const pendingNote = timedLive.pending ? '<div class="frac" style="color:var(--gold);font-weight:700;margin-top:2px">⏳ ' + timedLive.pending + ' part' + (timedLive.pending===1?'':'s') + ' still awaiting Dr Jon\'s marking — this score will update once marked.</div>' : '';
 
   document.getElementById('resultsTitle').textContent = liveSet.title + ' — Results';
   const timedGrade = computeGrade(timedLive.score, liveSet.gradeBoundaries);
-  let summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>';
+  let summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>' + pendingNote;
   if(timedGrade !== null) summaryHtml += '<div class="frac" style="font-weight:800;color:var(--brand);margin-top:2px">Estimated grade: ' + timedGrade + '</div>';
   if(keyChanged) summaryHtml += '<div class="recalc-note">Recalculated against the current answer key</div>';
 
   if(sub.overtimeSubmittedAt) {
-    const overtimeLive = computeScoreAgainst(sub.overtimeAnswers, liveSet);
+    const overtimeLive = computeScoreAgainst(sub.overtimeAnswers, liveSet, manualMarks, true);
     const overtimeGrade = computeGrade(overtimeLive.score, liveSet.gradeBoundaries);
     summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + timedLive.pct + '%</div><div class="l">Timed' + (timedGrade!==null?' · '+timedGrade:'') + '</div></div><div class="score-box"><div class="n">' + overtimeLive.pct + '%</div><div class="l">Overtime' + (overtimeGrade!==null?' · '+overtimeGrade:'') + '</div></div></div>';
   }
   if(sub.reattemptSubmittedAt) {
-    const reattemptLive = computeScoreAgainst(sub.reattemptAnswers, liveSet);
+    const reattemptLive = computeScoreAgainst(sub.reattemptAnswers, liveSet, manualMarks, true);
     const reattemptGrade = computeGrade(reattemptLive.score, liveSet.gradeBoundaries);
     summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + reattemptLive.pct + '%</div><div class="l">Latest Reattempt (practice)' + (reattemptGrade!==null?' · '+reattemptGrade:'') + '</div></div></div>';
   }
@@ -1169,20 +1227,46 @@ function showResults(sub, showOvertimeToo) {
   noteEl.innerHTML = '✅ Your submission has been recorded. There is no automatic notification sent to Dr Jon — but your answers and score are already saved and visible to him.';
   document.getElementById('scoreSummary').appendChild(noteEl);
 
-  let breakdownHtml = '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet) + '</div>';
+  let breakdownHtml = '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
   if(sub.overtimeSubmittedAt) {
-    breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Overtime attempt — question breakdown</h2>' + buildBreakdown(sub.overtimeAnswers, liveSet) + '</div>';
+    breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Overtime attempt — question breakdown</h2>' + buildBreakdown(sub.overtimeAnswers, liveSet, manualMarks, true) + '</div>';
   }
   if(sub.reattemptSubmittedAt) {
-    breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Latest reattempt (practice) — question breakdown</h2>' + buildBreakdown(sub.reattemptAnswers, liveSet) + '</div>';
+    breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Latest reattempt (practice) — question breakdown</h2>' + buildBreakdown(sub.reattemptAnswers, liveSet, manualMarks, true) + '</div>';
   }
   document.getElementById('breakdownContainer').innerHTML = breakdownHtml;
   document.getElementById('reattemptBtn').classList.remove('hidden');
   document.getElementById('resultsScreen').classList.remove('hidden');
 }
 
-function computeScoreAgainst(answers, set) {
+// manualMarks: { [leafKey]: true|false }, admin-entered correctness for
+// leaves marked 'manual' — undefined means not yet marked ("pending"),
+// which counts toward total but not toward score. Students never set this
+// themselves; it only exists once Dr Jon has reviewed the submission.
+// excludeManual: true for overtime — that's self-check only (the student
+// sees the model answer after submitting), so manual leaves aren't counted
+// toward the overtime score/total at all rather than sitting pending forever.
+function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
   answers = answers || {};
+  manualMarks = manualMarks || {};
+
+  if(set.paperType === 'lq_16plus') {
+    const leaves = lqAllLeafKeys(set);
+    let score = 0, pending = 0, total = 0;
+    leaves.forEach(leafKey => {
+      const isManual = (set.gradingMode || {})[leafKey] === 'manual';
+      if(isManual && excludeManual) return;
+      total++;
+      if(isManual) {
+        if(manualMarks[leafKey] === true) score++;
+        else if(manualMarks[leafKey] !== false) pending++;
+      } else if(answersMatch(answers[leafKey], (set.answerKey||{})[leafKey])) {
+        score++;
+      }
+    });
+    return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0, pending };
+  }
+
   let score = 0;
   const total = set.totalQuestions;
   for(let q=1; q<=total; q++) {
@@ -1201,9 +1285,44 @@ function computeGrade(score, gradeBoundaries) {
   return null;
 }
 
-function buildBreakdown(answers, set) {
+function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
   set = set || currentSet;
   answers = answers || {};
+  manualMarks = manualMarks || {};
+
+  if(set.paperType === 'lq_16plus') {
+    let html = '';
+    Object.keys(set.structure || {}).map(Number).sort((a,b)=>a-b).forEach(parent => {
+      const leaves = (set.structure[parent].length ? set.structure[parent] : ['']);
+      leaves.forEach(label => {
+        const leafKey = lqLeafKey(parent, label);
+        const given = answers[leafKey] || '—';
+        const isManual = (set.gradingMode||{})[leafKey] === 'manual';
+        const modelAnswer = String((set.answerKey||{})[leafKey] || '').split('|').join(' or ');
+        const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '');
+        let cls, verdictText, extra = '';
+        if(isManual && selfCheckOnly) {
+          // Overtime/reattempt are self-check only — never officially marked,
+          // so just show the model answer for the student to compare against.
+          cls = ''; verdictText = 'Self-check';
+          extra = '<div class="correct-ans">Model answer: ' + modelAnswer + '</div>';
+        } else if(isManual) {
+          const mark = manualMarks[leafKey];
+          if(mark === true) { cls='correct'; verdictText='✓ Marked correct'; }
+          else if(mark === false) { cls='incorrect'; verdictText='✗ Marked incorrect'; }
+          else { cls='review'; verdictText='⏳ Pending marking'; }
+        } else {
+          const isCorrect = answersMatch(answers[leafKey], (set.answerKey||{})[leafKey]);
+          cls = isCorrect ? 'correct' : 'incorrect';
+          verdictText = isCorrect ? '✓ Correct' : '✗ Incorrect';
+          if(!isCorrect) extra = '<div class="correct-ans">Correct answer: ' + modelAnswer + '</div>';
+        }
+        html += '<div class="qblock review ' + cls + '"><span class="verdict ' + (cls==='correct'?'ok':cls==='incorrect'?'no':'') + '">' + verdictText + '</span><div class="qnum">' + qLabel + '</div><div>Your answer: <strong>' + given + '</strong></div>' + extra + '</div>';
+      });
+    });
+    return html;
+  }
+
   let html = '';
   for(let q=1; q<=set.totalQuestions; q++) {
     const given = answers[q] || '—';
