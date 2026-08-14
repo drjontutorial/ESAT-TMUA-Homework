@@ -371,6 +371,15 @@ let lqGradingMode = {}; // leafKey -> 'auto' | 'manual'
 let pendingLQImport = null;
 
 function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
+
+// Display-only formatting: turns "x^2" / "x^-1" into real superscript
+// characters (x², x⁻¹) so question templates read like actual maths instead
+// of raw caret notation. Never applied to editable inputs — only to
+// read-only text shown in the breakdown/marking views.
+const LQ_SUPERSCRIPT_MAP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
+function formatMathText(text) {
+  return String(text || '').replace(/\^(-?\d+)/g, (m, exp) => exp.split('').map(ch => LQ_SUPERSCRIPT_MAP[ch] || ch).join(''));
+}
 let editingStudentCode = null;
 let currentResultsSetId = null;
 
@@ -1282,11 +1291,12 @@ function lqLeafIsCorrect(given, correctRaw) {
 function lqRenderFilledTemplate(template, given) {
   const parts = String(given || '').split('|||');
   let i = 0;
-  return template.replace(LQ_BLANK_RE, () => {
+  const filled = template.replace(LQ_BLANK_RE, () => {
     const v = parts[i] !== undefined && parts[i] !== '' ? parts[i] : '—';
     i++;
     return v;
   });
+  return formatMathText(filled);
 }
 
 // Every leaf key for a 16+ Long Questions paper — a leaf is a sub-part
@@ -1576,14 +1586,17 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
       const modelAnswer = (set.answerKey||{})[leafKey] || '';
       const isManual = (set.gradingMode||{})[leafKey] === 'manual';
       const spec = parseLQAnswerSpec(modelAnswer);
-      const displayLabel = spec.template ? (label2?'('+label2+') ':'') + spec.template : (label2 ? ('('+label2+')') : '');
+      const displayLabel = spec.template ? (label2?'('+label2+') ':'') + formatMathText(spec.template) : (label2 ? ('('+label2+')') : '');
       const givenDisplay = spec.template ? (given ? lqRenderFilledTemplate(spec.template, given) : '—') : (given || '—');
+      // Human-readable model answer, whether templated or plain — never the
+      // raw "template => values" storage string.
+      const modelAnswerDisplay = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : formatMathText(String(modelAnswer||'').split('|').join(' or '));
       let cls, verdict, markControl = '';
 
       if(isManual && isOvertime) {
         // Not counted toward the overtime total at all — self-check only.
         cls = 'notattempted';
-        verdict = 'Self-check — model answer: ' + String(modelAnswer||'').split('|').join(' or ');
+        verdict = 'Self-check — model answer: ' + modelAnswerDisplay;
       } else {
         total++;
         if(!given) {
@@ -1598,11 +1611,10 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
           correct++; cls='correct'; verdict='✓ Correct';
         } else {
           incorrect++; cls='incorrect';
-          const correctDisplay = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : String(modelAnswer||'').split('|').join(' or ');
-          verdict = '✗ Model answer: ' + correctDisplay;
+          verdict = '✗ Model answer: ' + modelAnswerDisplay;
         }
       }
-      rows += '<div class="qrow '+cls+'"><span>'+displayLabel+': <strong>'+givenDisplay+'</strong>'+(isManual&&!isOvertime?' <span style="color:var(--muted);font-weight:600;font-size:11px">(model: '+modelAnswer+')</span>':'')+'</span><span>'+verdict+markControl+'</span></div>';
+      rows += '<div class="qrow '+cls+'"><span>'+displayLabel+': <strong>'+givenDisplay+'</strong>'+(isManual&&!isOvertime?' <span style="color:var(--muted);font-weight:600;font-size:11px">(model: '+modelAnswerDisplay+')</span>':'')+'</span><span>'+verdict+markControl+'</span></div>';
     });
   });
   const grade = computeGrade(correct, set.gradeBoundaries);

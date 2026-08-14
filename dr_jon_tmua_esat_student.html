@@ -860,7 +860,7 @@ function renderCurrentQuestion() {
   const isGrid = !!(currentSet.gridQuestions && currentSet.gridQuestions[q]);
   if(isLQ) {
     const leaves = (currentSet.structure && currentSet.structure[q] && currentSet.structure[q].length) ? currentSet.structure[q] : [''];
-    let html = '<p style="font-size:13px;color:var(--muted);margin-bottom:14px">No options here — type your answer for each part below.</p>';
+    let html = '';
     leaves.forEach(label => {
       const leafKey = lqLeafKey(q, label);
       const rowLabel = label ? ('('+label+')') : ('Q'+q);
@@ -886,7 +886,7 @@ function renderCurrentQuestion() {
             inline += '<input type="'+inputType+'"'+numAttrs+' value="'+val+'" oninput="setLQBlankAnswer(\''+leafKey+'\','+blankIndex+',this.value)" onblur="commitLQBlankAnswer(\''+leafKey+'\','+blankIndex+',this.value)" style="width:'+(inputType==='text'?'88px':'64px')+';padding:8px;margin:0 2px;border:1.5px solid var(--line);border-radius:8px;font-size:15px;font-weight:700;text-align:center;font-family:\'DM Sans\',sans-serif">';
             blankIndex++;
           } else {
-            inline += segment.replace(/</g,'&lt;');
+            inline += formatMathText(segment).replace(/</g,'&lt;');
           }
         });
         html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:8px;color:var(--brand)">'+rowLabel+'</label><div style="font-size:15px;line-height:2.4">'+inline+'</div></div>';
@@ -1064,6 +1064,15 @@ function commitGridAnswer(value) {
 // screen can hold several separate sub-part answer boxes.
 function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
 
+// Display-only formatting: turns "x^2" / "x^-1" into real superscript
+// characters (x², x⁻¹) so question templates read like actual maths instead
+// of raw caret notation. Never applied to editable inputs — only to
+// read-only text the student/admin sees rendered.
+const LQ_SUPERSCRIPT_MAP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
+function formatMathText(text) {
+  return String(text || '').replace(/\^(-?\d+)/g, (m, exp) => exp.split('').map(ch => LQ_SUPERSCRIPT_MAP[ch] || ch).join(''));
+}
+
 // A leaf's stored answer is either a plain value, or a template with one or
 // more blanks plus the correct value for each, written as
 // "<template> => <val1>, <val2>, ...". Lets a question like a coordinate or
@@ -1089,11 +1098,12 @@ function parseLQAnswerSpec(raw) {
 function lqRenderFilledTemplate(template, given) {
   const parts = String(given || '').split('|||');
   let i = 0;
-  return template.replace(LQ_BLANK_RE, () => {
+  const filled = template.replace(LQ_BLANK_RE, () => {
     const v = parts[i] !== undefined && parts[i] !== '' ? parts[i] : '—';
     i++;
     return v;
   });
+  return formatMathText(filled);
 }
 
 function setLQAnswer(leafKey, value) {
@@ -1420,8 +1430,8 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
         const rawModelAnswer = (set.answerKey||{})[leafKey] || '';
         const spec = parseLQAnswerSpec(rawModelAnswer);
         const given = spec.template ? (rawGiven ? lqRenderFilledTemplate(spec.template, rawGiven) : '—') : (rawGiven || '—');
-        const modelAnswer = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : String(rawModelAnswer || '').split('|').join(' or ');
-        const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '') + (spec.template ? ' — ' + spec.template : '');
+        const modelAnswer = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : formatMathText(String(rawModelAnswer || '').split('|').join(' or '));
+        const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '') + (spec.template ? ' — ' + formatMathText(spec.template) : '');
         let cls, verdictText, extra = '';
         if(isManual && selfCheckOnly) {
           // Overtime/reattempt are self-check only — never officially marked,
