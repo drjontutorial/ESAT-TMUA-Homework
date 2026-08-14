@@ -863,10 +863,45 @@ function renderCurrentQuestion() {
     let html = '<p style="font-size:13px;color:var(--muted);margin-bottom:14px">No options here — type your answer for each part below.</p>';
     leaves.forEach(label => {
       const leafKey = lqLeafKey(q, label);
-      const currentVal = (currentAnswers[leafKey] || '').replace(/"/g, '&quot;');
       const rowLabel = label ? ('('+label+')') : ('Q'+q);
-      html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:6px;color:var(--brand)">'+rowLabel+'</label>'
-        + '<input type="text" value="'+currentVal+'" oninput="setLQAnswer(\''+leafKey+'\',this.value)" onblur="commitLQAnswer(\''+leafKey+'\',this.value)" style="width:100%;padding:14px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;font-weight:700;font-family:\'DM Sans\',sans-serif" placeholder="Your answer"></div>';
+      const spec = parseLQAnswerSpec((currentSet.answerKey || {})[leafKey]);
+      const isManual = ((currentSet.gradingMode || {})[leafKey]) === 'manual';
+
+      if(spec.template) {
+        // Show the real question wording with a small typing box at each
+        // blank. "___" gives a native number input (physically can't accept
+        // letters, mobile shows the numeric keypad too); "~~~" gives a short
+        // text box for the rare case a blank needs an algebraic answer like
+        // "2x". Either way, brackets/units/commas live in the surrounding
+        // text, never typed by the student.
+        const segments = spec.template.split(LQ_BLANK_RE);
+        let inline = '';
+        let blankIndex = 0;
+        segments.forEach(segment => {
+          if(segment === '___' || segment === '~~~') {
+            const inputType = segment === '~~~' ? 'text' : 'number';
+            const numAttrs = segment === '___' ? ' inputmode="decimal" step="any"' : '';
+            const givenParts = (currentAnswers[leafKey] || '').split('|||');
+            const val = (givenParts[blankIndex] || '').replace(/"/g, '&quot;');
+            inline += '<input type="'+inputType+'"'+numAttrs+' value="'+val+'" oninput="setLQBlankAnswer(\''+leafKey+'\','+blankIndex+',this.value)" onblur="commitLQBlankAnswer(\''+leafKey+'\','+blankIndex+',this.value)" style="width:'+(inputType==='text'?'88px':'64px')+';padding:8px;margin:0 2px;border:1.5px solid var(--line);border-radius:8px;font-size:15px;font-weight:700;text-align:center;font-family:\'DM Sans\',sans-serif">';
+            blankIndex++;
+          } else {
+            inline += segment.replace(/</g,'&lt;');
+          }
+        });
+        html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:8px;color:var(--brand)">'+rowLabel+'</label><div style="font-size:15px;line-height:2.4">'+inline+'</div></div>';
+      } else if(isManual) {
+        // Explanation-required — needs free text, not restricted to numbers.
+        const currentVal = (currentAnswers[leafKey] || '').replace(/"/g, '&quot;');
+        html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:6px;color:var(--brand)">'+rowLabel+'</label>'
+          + '<textarea oninput="setLQAnswer(\''+leafKey+'\',this.value)" onblur="commitLQAnswer(\''+leafKey+'\',this.value)" style="width:100%;min-height:90px;padding:14px;border:1.5px solid var(--line);border-radius:12px;font-size:15px;font-family:\'DM Sans\',sans-serif" placeholder="Your answer">'+currentVal+'</textarea></div>';
+      } else {
+        // Plain single-value auto-graded question — number only, same as
+        // the blanks above.
+        const currentVal = (currentAnswers[leafKey] || '').replace(/"/g, '&quot;');
+        html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:6px;color:var(--brand)">'+rowLabel+'</label>'
+          + '<input type="number" inputmode="decimal" step="any" value="'+currentVal+'" oninput="setLQAnswer(\''+leafKey+'\',this.value)" onblur="commitLQAnswer(\''+leafKey+'\',this.value)" style="width:100%;padding:14px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;font-weight:700;font-family:\'DM Sans\',sans-serif" placeholder="Your answer"></div>';
+      }
     });
     document.getElementById('examOptions').innerHTML = html;
   } else if(isGrid) {
@@ -1029,8 +1064,61 @@ function commitGridAnswer(value) {
 // screen can hold several separate sub-part answer boxes.
 function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
 
+// A leaf's stored answer is either a plain value, or a template with one or
+// more blanks plus the correct value for each, written as
+// "<template> => <val1>, <val2>, ...". Lets a question like a coordinate or
+// ratio show its real wording with small individual typing boxes, instead
+// of one box where the student has to type brackets/commas themselves. Two
+// blank markers are supported: "___" = number-only box (real type="number"
+// input, can't accept letters), "~~~" = short-text box (exact-matched, but
+// accepts things like "2x").
+const LQ_BLANK_RE = /(___|~~~)/g;
+function parseLQAnswerSpec(raw) {
+  raw = String(raw || '');
+  const idx = raw.indexOf('=>');
+  if(idx === -1) return { template: null, values: [raw], blankTypes: [] };
+  const template = raw.slice(0, idx).trim();
+  const blankTypes = (template.match(LQ_BLANK_RE) || []).map(m => m === '~~~' ? 'text' : 'number');
+  return {
+    template,
+    values: raw.slice(idx + 2).split(',').map(s => s.trim()),
+    blankTypes
+  };
+}
+
+function lqRenderFilledTemplate(template, given) {
+  const parts = String(given || '').split('|||');
+  let i = 0;
+  return template.replace(LQ_BLANK_RE, () => {
+    const v = parts[i] !== undefined && parts[i] !== '' ? parts[i] : '—';
+    i++;
+    return v;
+  });
+}
+
 function setLQAnswer(leafKey, value) {
   currentAnswers[leafKey] = value;
+}
+
+// One blank within a templated leaf — reads/writes its slot in the "|||"
+// joined string kept at currentAnswers[leafKey], without disturbing the
+// other blanks' already-typed values.
+function setLQBlankAnswer(leafKey, blankIndex, value) {
+  const parts = (currentAnswers[leafKey] || '').split('|||');
+  while(parts.length <= blankIndex) parts.push('');
+  parts[blankIndex] = value;
+  currentAnswers[leafKey] = parts.join('|||');
+}
+
+function commitLQBlankAnswer(leafKey, blankIndex, value) {
+  setLQBlankAnswer(leafKey, blankIndex, value);
+  const joined = currentAnswers[leafKey];
+  if(!joined) return;
+  logEvent('answer', { question: leafKey, answer: joined, mode: currentMode });
+  if(currentMode === 'timed') {
+    const {ref,update,db} = window.firebaseDB;
+    update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
+  }
 }
 
 function commitLQAnswer(leafKey, value) {
@@ -1246,6 +1334,16 @@ function showResults(sub, showOvertimeToo) {
 // excludeManual: true for overtime — that's self-check only (the student
 // sees the model answer after submitting), so manual leaves aren't counted
 // toward the overtime score/total at all rather than sitting pending forever.
+// given: for a templated leaf, the student's per-blank answers joined with
+// "|||" (in blank order) — for a plain leaf, just the raw typed value.
+function lqLeafIsCorrect(given, correctRaw) {
+  const spec = parseLQAnswerSpec(correctRaw);
+  if(!spec.template) return answersMatch(given, correctRaw);
+  const givenParts = String(given || '').split('|||');
+  if(givenParts.length !== spec.values.length) return false;
+  return spec.values.every((v, i) => answersMatch(givenParts[i], v));
+}
+
 function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
   answers = answers || {};
   manualMarks = manualMarks || {};
@@ -1260,7 +1358,7 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
       if(isManual) {
         if(manualMarks[leafKey] === true) score++;
         else if(manualMarks[leafKey] !== false) pending++;
-      } else if(answersMatch(answers[leafKey], (set.answerKey||{})[leafKey])) {
+      } else if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) {
         score++;
       }
     });
@@ -1296,10 +1394,13 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
       const leaves = (set.structure[parent].length ? set.structure[parent] : ['']);
       leaves.forEach(label => {
         const leafKey = lqLeafKey(parent, label);
-        const given = answers[leafKey] || '—';
+        const rawGiven = answers[leafKey];
         const isManual = (set.gradingMode||{})[leafKey] === 'manual';
-        const modelAnswer = String((set.answerKey||{})[leafKey] || '').split('|').join(' or ');
-        const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '');
+        const rawModelAnswer = (set.answerKey||{})[leafKey] || '';
+        const spec = parseLQAnswerSpec(rawModelAnswer);
+        const given = spec.template ? (rawGiven ? lqRenderFilledTemplate(spec.template, rawGiven) : '—') : (rawGiven || '—');
+        const modelAnswer = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : String(rawModelAnswer || '').split('|').join(' or ');
+        const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '') + (spec.template ? ' — ' + spec.template : '');
         let cls, verdictText, extra = '';
         if(isManual && selfCheckOnly) {
           // Overtime/reattempt are self-check only — never officially marked,
@@ -1312,7 +1413,7 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
           else if(mark === false) { cls='incorrect'; verdictText='✗ Marked incorrect'; }
           else { cls='review'; verdictText='⏳ Pending marking'; }
         } else {
-          const isCorrect = answersMatch(answers[leafKey], (set.answerKey||{})[leafKey]);
+          const isCorrect = lqLeafIsCorrect(rawGiven, rawModelAnswer);
           cls = isCorrect ? 'correct' : 'incorrect';
           verdictText = isCorrect ? '✓ Correct' : '✗ Incorrect';
           if(!isCorrect) extra = '<div class="correct-ans">Correct answer: ' + modelAnswer + '</div>';

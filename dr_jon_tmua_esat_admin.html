@@ -646,7 +646,7 @@ function renderLQGrid() {
       const isManual = lqGradingMode[leafKey] === 'manual';
       html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">'
         + '<input type="text" placeholder="label (blank = no sub-part)" value="'+label.replace(/"/g,'&quot;')+'" style="width:130px;padding:8px;border:1.5px solid var(--line);border-radius:8px;font-size:12px" onchange="updateLQLeafLabel('+parent+','+i+',this.value)">'
-        + '<input type="text" placeholder="model answer" value="'+answer.replace(/"/g,'&quot;')+'" style="flex:1;min-width:180px;padding:8px;border:1.5px solid var(--line);border-radius:8px;font-size:12px" onchange="updateLQLeafAnswer('+parent+',\''+label+'\',this.value)">'
+        + '<input type="text" placeholder="model answer, or text with ___ blanks => val1, val2" value="'+answer.replace(/"/g,'&quot;')+'" style="flex:1;min-width:180px;padding:8px;border:1.5px solid var(--line);border-radius:8px;font-size:12px" onchange="updateLQLeafAnswer('+parent+',\''+label+'\',this.value)">'
         + '<label style="font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" '+(isManual?'checked':'')+' onchange="updateLQLeafMode('+parent+',\''+label+'\',this.checked)"> manual mark</label>'
         + (leaves.length > 1 ? '<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="removeLQLeaf('+parent+','+i+')">✕</button>' : '')
         + '</div>';
@@ -709,7 +709,7 @@ function updateLQLeafMode(parent, label, isManual) {
 
 function copyLQClaudePrompt() {
   const total = parseInt(document.getElementById('setTotalQ').value) || 13;
-  const prompt = 'Please give me model answers for a ' + total + '-question 16+ entrance exam Long Questions paper.\n\nReply with ONE line per question or sub-part, formatted as:\n<label>: <answer>\n\nUse plain question numbers for single-part questions (e.g. "1: 42"), and combine the question number with a sub-part letter for multi-part questions (e.g. "5a: x = 3", "5bi: ...", "5bii: ..." — no spaces, no brackets, in that exact style).\n\nEach question falls into one of three kinds — decide which applies and follow its format exactly:\n\n1. Numerical answer only (no explanation needed) — can be exactly matched, so just give the value, e.g. "1: 42" or "2: 3/4". If more than one equivalent form is acceptable, separate them with "|", e.g. "3: 3/4|0.75".\n\n2. Explanation/working only, no specific number — needs human judgement to mark, so prefix with [manual] and give a full model answer, e.g. "5bi: [manual] Explain why the gradient is negative because the line slopes downward as x increases.".\n\n3. BOTH a numerical answer AND an explanation together (e.g. "state the value of x and explain your reasoning") — this ALSO needs [manual] (since the explanation can\'t be auto-matched), but give the full model answer including the number, e.g. "6: [manual] x = 7, because substituting into the original equation gives 2(7) - 3 = 11.". Don\'t split this into two separate lines — it\'s one combined model answer for one question.\n\nExample:\n1: 42\n2: 3/4\n5a: x = 3\n5bi: [manual] Explain why the gradient is negative because...\n5bii: 12\n6: [manual] x = 7, because substituting into the original equation gives 2(7) - 3 = 11.\n\nJust the lines, nothing else — no headers, no extra explanation.';
+  const prompt = 'Please give me model answers for a ' + total + '-question 16+ entrance exam Long Questions paper.\n\nReply with ONE line per question or sub-part, formatted as:\n<label>: <answer>\n\nUse plain question numbers for single-part questions (e.g. "1: 42"), and combine the question number with a sub-part letter for multi-part questions (e.g. "5a: ...", "5bi: ...", "5bii: ..." — no spaces, no brackets, in that exact style).\n\nTwo kinds of blank are available for auto-marked answers:\n- "___" = number-only box. The student literally cannot type a letter into it — use this whenever the answer is a pure number.\n- "~~~" = short-text box. Use ONLY when the answer genuinely needs a letter/variable in it, e.g. an expression like "2x" or "b+5" — never use this just because you\'re unsure, always prefer "___" when the answer is a plain number.\n\nEach question falls into one of FIVE kinds — decide which applies and follow its format exactly:\n\n1. Single plain number — just give the value, e.g. "1: 42" or "2: -7".\n\n2. Multiple numbers in one structured answer (coordinates, several variables, a ratio, a fraction, units, etc.) — give the question text with one "___" per number, then "=>" then the correct values in order separated by commas. Examples: "3ai: Coordinate of B: (___, ___) => -26, -18", "4a: a = ___, b = ___ => 4, 2", "3bii: Ratio of Area APC : Area ARC = ___ : ___ => 11, 7", "13: ___/___ m => 5, 6" (a fraction with a unit), "2: ___ km => 3" (a number with a unit). Always use this instead of cramming a fraction/coordinate/ratio/unit into one blank.\n\n3. An answer expressed in terms of a variable, or containing a letter (e.g. angles "2x" and "x", or "a = b + 5") — use "~~~" for the blank(s) that need the letter, e.g. "9a: ∠AOC = ~~~, ∠BOE = ~~~ => 2x, x" or "5bi: a = ~~~ => b+5". You can mix "___" and "~~~" in the same template if only some blanks need letters.\n\n4. Explanation/working only, no specific number — needs human judgement to mark, so prefix with [manual] and give a full model answer, e.g. "5bi: [manual] Explain why the gradient is negative because the line slopes downward as x increases.".\n\n5. A question asking to find ALL possible values/combinations of something (e.g. "find all values of m and n that satisfy..." where there are several valid pairs) — these can\'t be reliably auto-checked since the student might list them in any order or format, so ALWAYS mark these [manual] too, and give the full list of valid answers as the model answer, e.g. "5bii: [manual] All values: (m,n) = (5,1), (4,2), (3,3).".\n\nExample:\n1: 42\n2: ___ km => 3\n3ai: Coordinate of B: (___, ___) => -26, -18\n3bii: Ratio of Area APC : Area ARC = ___ : ___ => 11, 7\n5a: x = ___ => 3\n5bi: [manual] Explain why the gradient is negative because...\n6: [manual] x = 7, because substituting into the original equation gives 2(7) - 3 = 11.\n9a: ∠AOC = ~~~, ∠BOE = ~~~ => 2x, x\n11: p = ___, q = ___ => 72, 144\n13: ___/___ m => 5, 6\n\nJust the lines, nothing else — no headers, no extra explanation.';
   navigator.clipboard.writeText(prompt).then(() => {
     alert('✅ Prompt copied! Paste it into another Claude chat, get the answers back, then paste that reply into the box below.');
   }).catch(() => {
@@ -757,7 +757,9 @@ function previewLQImport() {
   pendingLQImport = parsed;
   let rows = parsed.order.map(leafKey => {
     const manual = parsed.gradingMode[leafKey] === 'manual';
-    return '<div class="qrow correct"><span>' + leafKey + (manual ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(manual)</span>' : '') + '</span><span><strong>' + parsed.answerKey[leafKey] + '</strong></span></div>';
+    const spec = parseLQAnswerSpec(parsed.answerKey[leafKey]);
+    const display = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) + ' <span style="color:var(--muted);font-weight:600;font-size:11px">(' + spec.values.length + ' blanks)</span>' : parsed.answerKey[leafKey];
+    return '<div class="qrow correct"><span>' + leafKey + (manual ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(manual)</span>' : '') + '</span><span><strong>' + display + '</strong></span></div>';
   }).join('');
   let html = '<div style="max-height:280px;overflow-y:auto;margin:10px 0;background:#fff;border-radius:10px;padding:6px">' + rows + '</div>';
   html += '<div style="display:flex;gap:10px"><button class="btn btn-green" style="flex:1" onclick="applyLQImport()">✅ Apply</button><button class="btn btn-ghost" style="flex:1" onclick="cancelLQImportPreview()">Cancel</button></div>';
@@ -1215,6 +1217,51 @@ function answersMatch(given, correct) {
   return acceptable.includes(String(given).trim().toLowerCase());
 }
 
+// A leaf's stored answer is either a plain value (optionally with "|"
+// alternates), or a template with one or more blanks plus the correct value
+// for each, written as "<template> => <val1>, <val2>, ...". This lets a
+// question like a coordinate or ratio show its real wording with small
+// individual typing boxes, instead of one box where the student has to type
+// brackets/commas/units themselves. Two blank markers are supported:
+// "___" = number-only box (real type="number" input, can't accept letters),
+// "~~~" = short-text box (exact-matched, but accepts things like "2x").
+const LQ_BLANK_RE = /(___|~~~)/g;
+function parseLQAnswerSpec(raw) {
+  raw = String(raw || '');
+  const idx = raw.indexOf('=>');
+  if(idx === -1) return { template: null, values: [raw], blankTypes: [] };
+  const template = raw.slice(0, idx).trim();
+  const blankTypes = (template.match(LQ_BLANK_RE) || []).map(m => m === '~~~' ? 'text' : 'number');
+  return {
+    template,
+    values: raw.slice(idx + 2).split(',').map(s => s.trim()),
+    blankTypes
+  };
+}
+
+// given: for a templated leaf, the student's per-blank answers joined with
+// "|||" (in blank order) — for a plain leaf, just the raw typed value.
+function lqLeafIsCorrect(given, correctRaw) {
+  const spec = parseLQAnswerSpec(correctRaw);
+  if(!spec.template) return answersMatch(given, correctRaw);
+  const givenParts = String(given || '').split('|||');
+  if(givenParts.length !== spec.values.length) return false;
+  return spec.values.every((v, i) => answersMatch(givenParts[i], v));
+}
+
+// Fills a template's blanks ("___" or "~~~") with the student's typed
+// values, for a readable "Your answer: Coordinate of B: (-26, -18)" display
+// instead of showing the raw "-26|||-18" joined string.
+function lqRenderFilledTemplate(template, given) {
+  const parts = String(given || '').split('|||');
+  let i = 0;
+  return template.replace(LQ_BLANK_RE, () => {
+    const v = parts[i] !== undefined && parts[i] !== '' ? parts[i] : '—';
+    i++;
+    return v;
+  });
+}
+
 // Every leaf key for a 16+ Long Questions paper — a leaf is a sub-part
 // (e.g. "5bi") if the parent question has sub-parts, or just the parent
 // number itself (e.g. "1") if it doesn't.
@@ -1246,7 +1293,7 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
       if(isManual) {
         if(manualMarks[leafKey] === true) score++;
         else if(manualMarks[leafKey] !== false) pending++;
-      } else if(answersMatch(answers[leafKey], (set.answerKey||{})[leafKey])) {
+      } else if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) {
         score++;
       }
     });
@@ -1486,12 +1533,14 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
       const given = answers[leafKey];
       const modelAnswer = (set.answerKey||{})[leafKey] || '';
       const isManual = (set.gradingMode||{})[leafKey] === 'manual';
-      const displayLabel = label2 ? ('('+label2+')') : '';
+      const spec = parseLQAnswerSpec(modelAnswer);
+      const displayLabel = spec.template ? (label2?'('+label2+') ':'') + spec.template : (label2 ? ('('+label2+')') : '');
+      const givenDisplay = spec.template ? (given ? lqRenderFilledTemplate(spec.template, given) : '—') : (given || '—');
       let cls, verdict, markControl = '';
 
       if(isManual && isOvertime) {
         // Not counted toward the overtime total at all — self-check only.
-        cls = given ? 'notattempted' : 'notattempted';
+        cls = 'notattempted';
         verdict = 'Self-check — model answer: ' + String(modelAnswer||'').split('|').join(' or ');
       } else {
         total++;
@@ -1503,13 +1552,15 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
           if(mark === true) { correct++; cls='correct'; verdict='✓ Marked correct'; }
           else if(mark === false) { incorrect++; cls='incorrect'; verdict='✗ Marked incorrect'; }
           else { pending++; cls='notattempted'; verdict='⏳ Pending your marking'; }
-        } else if(answersMatch(given, modelAnswer)) {
+        } else if(lqLeafIsCorrect(given, modelAnswer)) {
           correct++; cls='correct'; verdict='✓ Correct';
         } else {
-          incorrect++; cls='incorrect'; verdict='✗ Model answer: '+String(modelAnswer||'').split('|').join(' or ');
+          incorrect++; cls='incorrect';
+          const correctDisplay = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : String(modelAnswer||'').split('|').join(' or ');
+          verdict = '✗ Model answer: ' + correctDisplay;
         }
       }
-      rows += '<div class="qrow '+cls+'"><span>'+displayLabel+' answered <strong>'+(given||'—')+'</strong>'+(isManual&&!isOvertime?' <span style="color:var(--muted);font-weight:600;font-size:11px">(model: '+modelAnswer+')</span>':'')+'</span><span>'+verdict+markControl+'</span></div>';
+      rows += '<div class="qrow '+cls+'"><span>'+displayLabel+': <strong>'+givenDisplay+'</strong>'+(isManual&&!isOvertime?' <span style="color:var(--muted);font-weight:600;font-size:11px">(model: '+modelAnswer+')</span>':'')+'</span><span>'+verdict+markControl+'</span></div>';
     });
   });
   const grade = computeGrade(correct, set.gradeBoundaries);
