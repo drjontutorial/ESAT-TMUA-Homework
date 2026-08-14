@@ -497,9 +497,9 @@ async function renderHomepage() {
           // Long Questions papers with any manual-marked part still pending
           // your review — surfaced here so a completed paper never sits
           // unnoticed. MCQ/SAT/etc papers are auto-graded and never appear.
-          if(set && set.paperType === 'lq_16plus') {
+          if(set && set.paperType === 'lq_16plus' && !sub.resultsReleased) {
             const live = computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks);
-            if(live.pending > 0) needsReview.push({ ts: sub.timedSubmittedAt, code, setId, set, pending: live.pending });
+            needsReview.push({ ts: sub.timedSubmittedAt, code, setId, set, pending: live.pending });
           }
         }
       });
@@ -512,7 +512,8 @@ async function renderHomepage() {
       needsReview.forEach(r => {
         const name = studentName(r.code) || r.code;
         const time = new Date(r.ts).toLocaleString('en-GB');
-        reviewHtml += '<div class="qrow" style="background:#fef3c7;border-left:3px solid var(--gold);cursor:pointer" onclick="reviewJumpTo(\''+r.setId+'\',\''+r.code+'\')"><span>📝 <strong>'+name+'</strong> completed <em>'+(r.set?r.set.title:r.setId)+'</em> — '+r.pending+' part'+(r.pending===1?'':'s')+' need marking</span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
+        const statusText = r.pending > 0 ? (r.pending+' part'+(r.pending===1?'':'s')+' need marking') : 'ready to release';
+        reviewHtml += '<div class="qrow" style="background:#fef3c7;border-left:3px solid var(--gold);cursor:pointer" onclick="reviewJumpTo(\''+r.setId+'\',\''+r.code+'\')"><span>📝 <strong>'+name+'</strong> completed <em>'+(r.set?r.set.title:r.setId)+'</em> — '+statusText+'</span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
       });
       document.getElementById('needsReviewList').innerHTML = reviewHtml;
       reviewCard.classList.remove('hidden');
@@ -1533,7 +1534,7 @@ function showBreakdownFor(setId, code) {
 
   const isLQ = set.paperType === 'lq_16plus';
   if(isLQ) {
-    html += buildLQBreakdownSection('Timed Attempt', s.timedAnswers, set, s.manualMarks, flagged, setId, code, 'timed');
+    html += buildLQBreakdownSection('Timed Attempt', s.timedAnswers, set, s.manualMarks, flagged, setId, code, 'timed', s.resultsReleased);
     if(s.overtimeSubmittedAt) {
       html += buildLQBreakdownSection('Overtime Attempt', s.overtimeAnswers, set, s.manualMarks, flagged, setId, code, 'overtime');
     }
@@ -1565,7 +1566,7 @@ function showBreakdownFor(setId, code) {
 // correct/incorrect like normal; manual leaves show the student's answer
 // next to your model answer with a correct/incorrect toggle you set
 // yourself, plus a per-attempt "Copy Prompt for Claude" to help you judge.
-function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setId, code, attemptMode) {
+function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setId, code, attemptMode, resultsReleased) {
   answers = answers || {};
   manualMarks = manualMarks || {};
   flagged = flagged || [];
@@ -1621,7 +1622,13 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
   const gradeText = grade !== null ? ' <span style="color:var(--brand);font-weight:800">— Grade: '+grade+'</span>' : '';
   const pendingText = pending > 0 ? ' <span style="color:var(--gold);font-weight:800">('+pending+' pending marking)</span>' : '';
   let header = '<h3 style="font-size:14px;margin:14px 0 8px;color:var(--brand)">'+label+' — '+correct+' / '+total+' correct <span style="color:var(--muted);font-weight:600;font-size:12px">('+incorrect+' wrong, '+notAttempted+' not attempted)</span>'+pendingText+gradeText+'</h3>';
-  let footer = isOvertime ? '' : '<div style="display:flex;gap:10px;margin-top:8px"><button class="btn btn-ghost" onclick="copyLQMarkingPrompt(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">🤖 Copy Prompt for Claude (marking help)</button><button class="btn btn-primary" onclick="saveLQMarks(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">💾 Save Marks</button></div>';
+  const releaseBtn = resultsReleased
+    ? '<button class="btn btn-ghost" onclick="setLQResultReleased(\''+setId+'\',\''+code+'\',false)" style="flex:1">🔒 Hide Result From Student</button>'
+    : '<button class="btn btn-primary" onclick="setLQResultReleased(\''+setId+'\',\''+code+'\',true)" style="flex:1">🔓 Release Result to Student</button>';
+  const releaseStatus = resultsReleased
+    ? '<div style="margin-top:8px;font-size:12px;font-weight:700;color:var(--brand)">✅ Result released — visible to the student.</div>'
+    : '<div style="margin-top:8px;font-size:12px;font-weight:700;color:var(--gold)">⏳ Not released yet — student still sees "awaiting review".</div>';
+  let footer = isOvertime ? '' : '<div style="display:flex;gap:10px;margin-top:8px"><button class="btn btn-ghost" onclick="copyLQMarkingPrompt(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">🤖 Copy Prompt for Claude (marking help)</button><button class="btn btn-primary" onclick="saveLQMarks(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">💾 Save Marks</button></div><div style="display:flex;gap:10px;margin-top:8px">'+releaseBtn+'</div>'+releaseStatus;
   return header + rows + footer;
 }
 
@@ -1668,6 +1675,28 @@ async function saveLQMarks(setId, code, attemptMode) {
   try {
     await update(ref(db,'submissions/'+setId+'/'+code), fields);
     alert('✅ Marks saved.');
+    closeBreakdown();
+    if(setId === currentResultsSetId) loadResultsForSet();
+    const byStudentViewVisible = document.getElementById('perfByStudent').style.display !== 'none';
+    if(byStudentViewVisible && code === currentDetailCode) openStudentDetail(code);
+  } catch(err) {
+    alert('❌ Failed: ' + err);
+  }
+}
+
+// Flips whether the student can see their LQ result. Separate from Save
+// Marks so you can review/adjust marks privately before showing the student
+// anything — nothing is visible on the student side until this is set true.
+async function setLQResultReleased(setId, code, released) {
+  const allSubsForSet = (setId === currentResultsSetId) ? allSubmissions : null;
+  const s = allSubsForSet ? allSubsForSet[code] : lastLoadedDetailSubs[setId];
+  const set = homeworkSets[setId];
+  if(!s || !set) return;
+
+  const {ref,update,db} = window.firebaseDB;
+  const fields = { resultsReleased: released, resultsReleasedAt: released ? Date.now() : null };
+  try {
+    await update(ref(db,'submissions/'+setId+'/'+code), fields);
     closeBreakdown();
     if(setId === currentResultsSetId) loadResultsForSet();
     const byStudentViewVisible = document.getElementById('perfByStudent').style.display !== 'none';

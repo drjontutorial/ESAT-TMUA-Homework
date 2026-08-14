@@ -1311,8 +1311,12 @@ function showResults(sub, showOvertimeToo) {
   document.getElementById('resultsTitle').textContent = liveSet.title + ' — Results';
 
   let summaryHtml;
-  if(isLQ) {
+  if(isLQ && !sub.resultsReleased) {
     summaryHtml = '<div style="font-size:17px;font-weight:800;color:var(--brand);padding:8px 0 4px">📝 Your paper has been submitted</div><div class="frac" style="line-height:1.6">Dr Jon will review your answers and let you know your result — you don\'t need to do anything else for this attempt.</div>';
+  } else if(isLQ) {
+    const timedGradeLQ = computeGrade(timedLive.score, liveSet.gradeBoundaries);
+    summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>';
+    if(timedGradeLQ !== null) summaryHtml += '<div class="frac" style="font-weight:800;color:var(--brand);margin-top:2px">Grade: ' + timedGradeLQ + '</div>';
   } else {
     const pendingNote = timedLive.pending ? '<div class="frac" style="color:var(--gold);font-weight:700;margin-top:2px">⏳ ' + timedLive.pending + ' part' + (timedLive.pending===1?'':'s') + ' still awaiting Dr Jon\'s marking — this score will update once marked.</div>' : '';
     summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>' + pendingNote;
@@ -1338,13 +1342,17 @@ function showResults(sub, showOvertimeToo) {
 
   const noteEl = document.createElement('div');
   noteEl.className = 'submitted-note';
-  noteEl.innerHTML = isLQ
+  noteEl.innerHTML = (isLQ && !sub.resultsReleased)
     ? '✅ Your submission has been recorded and will show up in Dr Jon\'s review queue — your score and feedback will appear here once he\'s marked it.'
+    : isLQ
+    ? '✅ Marked and released by Dr Jon.'
     : '✅ Your submission has been recorded. There is no automatic notification sent to Dr Jon — but your answers and score are already saved and visible to him.';
   document.getElementById('scoreSummary').appendChild(noteEl);
 
   let breakdownHtml = '';
   if(!isLQ) {
+    breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
+  } else if(sub.resultsReleased) {
     breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
   }
   if(sub.overtimeSubmittedAt) {
