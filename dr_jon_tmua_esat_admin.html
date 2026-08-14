@@ -276,6 +276,12 @@ tbody tr:hover{background:#f8fafc}
             <input type="text" id="setPaperUrl" placeholder="https://drive.google.com/... — students only see this after they press Start">
           </div>
         </div>
+        <div class="form-row">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#065f46;background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:10px;padding:10px 14px">
+            <input type="checkbox" id="setIsTutorial" style="width:16px;height:16px">
+            🎓 Use as the first-login tutorial — every new student is sent straight into this paper once, before they can see any real assigned papers. Results are always self-check (shown immediately, no review needed). Only one paper can be the tutorial at a time.
+          </label>
+        </div>
 
         <div id="mcqCreateSections">
         <div style="background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:12px;padding:14px;margin-bottom:14px">
@@ -497,7 +503,7 @@ async function renderHomepage() {
           // Long Questions papers with any manual-marked part still pending
           // your review — surfaced here so a completed paper never sits
           // unnoticed. MCQ/SAT/etc papers are auto-graded and never appear.
-          if(set && set.paperType === 'lq_16plus' && !sub.resultsReleased) {
+          if(set && set.paperType === 'lq_16plus' && !set.isTutorial && !sub.resultsReleased) {
             const live = computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks);
             needsReview.push({ ts: sub.timedSubmittedAt, code, setId, set, pending: live.pending });
           }
@@ -1004,10 +1010,15 @@ function saveSet() {
   const paperType = document.getElementById('setPaperType').value;
   const timeLimit = parseInt(document.getElementById('setTimeLimit').value);
   const paperUrl = document.getElementById('setPaperUrl').value.trim();
+  const isTutorial = document.getElementById('setIsTutorial').checked;
 
   if(!title) { alert('Please enter a title'); return; }
   if(!paperUrl) {
     if(!confirm('No paper link added — students won\'t have anything to open when they start. Save anyway?')) return;
+  }
+  if(isTutorial) {
+    const existingTutorialId = Object.keys(homeworkSets).find(id => homeworkSets[id].isTutorial && id !== editingSetId);
+    if(existingTutorialId && !confirm('"' + homeworkSets[existingTutorialId].title + '" is currently the tutorial paper. Make this one the tutorial instead?')) return;
   }
 
   const {ref,set,push,db} = window.firebaseDB;
@@ -1030,7 +1041,7 @@ function saveSet() {
       title, paperType, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null,
       totalQuestions: parents.length,
       structure: lqStructure, answerKey: lqAnswerKey, gradingMode: lqGradingMode,
-      gradeBoundaries: currentGradeBoundaries,
+      gradeBoundaries: currentGradeBoundaries, isTutorial,
       createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now()
     };
   } else {
@@ -1051,11 +1062,20 @@ function saveSet() {
     if(missing.length > 0) {
       if(!confirm('Questions ' + missing.join(', ') + ' have no answer set. Save anyway?')) return;
     }
-    payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+    payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, isTutorial, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
   }
 
   const setId = editingSetId || push(ref(db,'homeworkSets')).key;
-  set(ref(db,'homeworkSets/'+setId), payload).then(() => {
+  const {update} = window.firebaseDB;
+  const writes = { ['homeworkSets/'+setId]: payload };
+  // Only one paper can be the tutorial at a time — demote whichever one
+  // currently holds it (if any, and it's not this same paper).
+  if(isTutorial) {
+    Object.keys(homeworkSets).forEach(id => {
+      if(id !== setId && homeworkSets[id].isTutorial) writes['homeworkSets/'+id+'/isTutorial'] = false;
+    });
+  }
+  update(ref(db), writes).then(() => {
     alert('✅ Set saved: ' + title);
     cancelEdit();
   }).catch(err => alert('Error: ' + err));
@@ -1072,6 +1092,7 @@ function cancelEdit() {
   document.getElementById('setOptionsCount').value = 8;
   document.getElementById('setTimeLimit').value = 40;
   document.getElementById('setPaperUrl').value = '';
+  document.getElementById('setIsTutorial').checked = false;
   currentGradeBoundaries = [];
   pendingGradeBoundaries = null;
   document.getElementById('gradeBoundaryText').value = '';
@@ -1097,6 +1118,7 @@ async function editSet(setId) {
   document.getElementById('setPaperType').value = s.paperType || 'esat';
   document.getElementById('setTimeLimit').value = s.timeLimitMinutes;
   document.getElementById('setPaperUrl').value = s.paperUrl || '';
+  document.getElementById('setIsTutorial').checked = !!s.isTutorial;
   currentGradeBoundaries = s.gradeBoundaries || [];
   pendingGradeBoundaries = null;
   document.getElementById('gradeBoundaryText').value = '';
@@ -1622,13 +1644,18 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
   const gradeText = grade !== null ? ' <span style="color:var(--brand);font-weight:800">— Grade: '+grade+'</span>' : '';
   const pendingText = pending > 0 ? ' <span style="color:var(--gold);font-weight:800">('+pending+' pending marking)</span>' : '';
   let header = '<h3 style="font-size:14px;margin:14px 0 8px;color:var(--brand)">'+label+' — '+correct+' / '+total+' correct <span style="color:var(--muted);font-weight:600;font-size:12px">('+incorrect+' wrong, '+notAttempted+' not attempted)</span>'+pendingText+gradeText+'</h3>';
-  const releaseBtn = resultsReleased
-    ? '<button class="btn btn-ghost" onclick="setLQResultReleased(\''+setId+'\',\''+code+'\',false)" style="flex:1">🔒 Hide Result From Student</button>'
-    : '<button class="btn btn-primary" onclick="setLQResultReleased(\''+setId+'\',\''+code+'\',true)" style="flex:1">🔓 Release Result to Student</button>';
-  const releaseStatus = resultsReleased
-    ? '<div style="margin-top:8px;font-size:12px;font-weight:700;color:var(--brand)">✅ Result released — visible to the student.</div>'
-    : '<div style="margin-top:8px;font-size:12px;font-weight:700;color:var(--gold)">⏳ Not released yet — student still sees "awaiting review".</div>';
-  let footer = isOvertime ? '' : '<div style="display:flex;gap:10px;margin-top:8px"><button class="btn btn-ghost" onclick="copyLQMarkingPrompt(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">🤖 Copy Prompt for Claude (marking help)</button><button class="btn btn-primary" onclick="saveLQMarks(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">💾 Save Marks</button></div><div style="display:flex;gap:10px;margin-top:8px">'+releaseBtn+'</div>'+releaseStatus;
+  let footer = '';
+  if(set.isTutorial) {
+    footer = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:var(--muted)">🎓 Tutorial paper — self-check, always visible to the student immediately. No marking or release needed.</div>';
+  } else if(!isOvertime) {
+    const releaseBtn = resultsReleased
+      ? '<button class="btn btn-ghost" onclick="setLQResultReleased(\''+setId+'\',\''+code+'\',false)" style="flex:1">🔒 Hide Result From Student</button>'
+      : '<button class="btn btn-primary" onclick="setLQResultReleased(\''+setId+'\',\''+code+'\',true)" style="flex:1">🔓 Release Result to Student</button>';
+    const releaseStatus = resultsReleased
+      ? '<div style="margin-top:8px;font-size:12px;font-weight:700;color:var(--brand)">✅ Result released — visible to the student.</div>'
+      : '<div style="margin-top:8px;font-size:12px;font-weight:700;color:var(--gold)">⏳ Not released yet — student still sees "awaiting review".</div>';
+    footer = '<div style="display:flex;gap:10px;margin-top:8px"><button class="btn btn-ghost" onclick="copyLQMarkingPrompt(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">🤖 Copy Prompt for Claude (marking help)</button><button class="btn btn-primary" onclick="saveLQMarks(\''+setId+'\',\''+code+'\',\''+attemptMode+'\')" style="flex:1">💾 Save Marks</button></div><div style="display:flex;gap:10px;margin-top:8px">'+releaseBtn+'</div>'+releaseStatus;
+  }
   return header + rows + footer;
 }
 

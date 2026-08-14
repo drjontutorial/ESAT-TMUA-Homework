@@ -358,6 +358,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
   </div>
   <div id="breakdownContainer"></div>
   <button class="btn secondary hidden" id="continueOvertimeBtn" onclick="goToOvertime()">Continue to overtime attempt</button>
+  <button class="btn green hidden" style="margin-top:10px" id="tutorialDoneBtn" onclick="finishTutorial()">🎉 Continue to my papers</button>
   <button class="btn green" style="margin-top:10px" id="reattemptBtn" onclick="beginReattempt()">🔄 Reattempt for Practice</button>
   <p class="sub" style="text-align:center;margin-top:8px">Practice only — untimed, doesn't change your saved timed/overtime score.</p>
 </div>
@@ -408,9 +409,26 @@ async function loginStudent() {
   }
 }
 
-function enterStudentHome() {
-  document.getElementById('studentHomeCard').classList.remove('hidden');
+async function enterStudentHome() {
   document.getElementById('welcomeName').textContent = 'Welcome, ' + (studentRecord.name || studentCode);
+
+  // First-login tutorial gate: like a game tutorial level, a student who
+  // hasn't completed the designated tutorial paper yet gets sent straight
+  // into it — real assigned papers stay hidden until they've submitted and
+  // viewed it once (flag is set inside showResults()).
+  if(!studentRecord.onboardingComplete) {
+    const {ref,get,db} = window.firebaseDB;
+    const snap = await get(ref(db,'homeworkSets'));
+    homeworkSets = snap.val() || {};
+    const tutorialId = Object.keys(homeworkSets).find(id => homeworkSets[id].isTutorial);
+    if(tutorialId) {
+      document.getElementById('studentHomeCard').classList.remove('hidden');
+      openSet(tutorialId);
+      return;
+    }
+  }
+
+  document.getElementById('studentHomeCard').classList.remove('hidden');
   switchHomeTab('papers');
   loadHomeworkSetsThenShowPaper();
 }
@@ -440,9 +458,11 @@ function myApprovedSetIds() {
 // Papers created before "Paper Type" existed have no paperType and are
 // treated as Physics (the old default), matching the admin side.
 const PAPER_TYPE_GROUPS = [
-  { key: 'tmua',     label: 'Maths' },
-  { key: 'esat',     label: 'Physics' },
-  { key: 'sat_math', label: 'SAT Math' }
+  { key: 'tmua',        label: 'Maths' },
+  { key: 'esat',        label: 'Physics' },
+  { key: 'sat_math',    label: 'SAT Math' },
+  { key: 'sixteen_mcq', label: '16+ MCQ' },
+  { key: 'lq_16plus',   label: '16+ Long Questions' }
 ];
 
 function paperTypeOf(s) {
@@ -1303,6 +1323,9 @@ function showResults(sub, showOvertimeToo) {
   // written work. Overtime/reattempt stay self-check (unaffected below),
   // since those are practice only, separate from the official timed result.
   const isLQ = liveSet.paperType === 'lq_16plus';
+  // The onboarding tutorial paper is self-check, always shown immediately —
+  // it's a walkthrough, not a real assessment awaiting Dr Jon's review.
+  const released = !!sub.resultsReleased || !!liveSet.isTutorial;
 
   const timedLive = computeScoreAgainst(sub.timedAnswers, liveSet, manualMarks);
   const keyChanged = sub.timedScore !== timedLive.score;
@@ -1311,7 +1334,7 @@ function showResults(sub, showOvertimeToo) {
   document.getElementById('resultsTitle').textContent = liveSet.title + ' — Results';
 
   let summaryHtml;
-  if(isLQ && !sub.resultsReleased) {
+  if(isLQ && !released) {
     summaryHtml = '<div style="font-size:17px;font-weight:800;color:var(--brand);padding:8px 0 4px">📝 Your paper has been submitted</div><div class="frac" style="line-height:1.6">Dr Jon will review your answers and let you know your result — you don\'t need to do anything else for this attempt.</div>';
   } else if(isLQ) {
     const timedGradeLQ = computeGrade(timedLive.score, liveSet.gradeBoundaries);
@@ -1342,7 +1365,9 @@ function showResults(sub, showOvertimeToo) {
 
   const noteEl = document.createElement('div');
   noteEl.className = 'submitted-note';
-  noteEl.innerHTML = (isLQ && !sub.resultsReleased)
+  noteEl.innerHTML = liveSet.isTutorial
+    ? '✅ This is a practice tutorial — it doesn\'t count toward your real results.'
+    : (isLQ && !released)
     ? '✅ Your submission has been recorded and will show up in Dr Jon\'s review queue — your score and feedback will appear here once he\'s marked it.'
     : isLQ
     ? '✅ Marked and released by Dr Jon.'
@@ -1352,7 +1377,7 @@ function showResults(sub, showOvertimeToo) {
   let breakdownHtml = '';
   if(!isLQ) {
     breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
-  } else if(sub.resultsReleased) {
+  } else if(released) {
     breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
   }
   if(sub.overtimeSubmittedAt) {
@@ -1362,8 +1387,23 @@ function showResults(sub, showOvertimeToo) {
     breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Latest reattempt (practice) — question breakdown</h2>' + buildBreakdown(sub.reattemptAnswers, liveSet, manualMarks, true) + '</div>';
   }
   document.getElementById('breakdownContainer').innerHTML = breakdownHtml;
-  document.getElementById('reattemptBtn').classList.remove('hidden');
+  document.getElementById('reattemptBtn').classList.toggle('hidden', !!liveSet.isTutorial);
+  document.getElementById('tutorialDoneBtn').classList.toggle('hidden', !liveSet.isTutorial);
   document.getElementById('resultsScreen').classList.remove('hidden');
+
+  // Viewing this results screen IS "completing the tutorial" — unlock real
+  // papers now rather than waiting for a further click, per the spec: submit
+  // + view answer = done. Only fires once per student.
+  if(liveSet.isTutorial && sub.timedSubmittedAt && !studentRecord.onboardingComplete) {
+    studentRecord.onboardingComplete = true;
+    const {ref,update,db} = window.firebaseDB;
+    update(ref(db,'students/'+studentCode), { onboardingComplete: true }).catch(() => {});
+  }
+}
+
+// "Continue to my papers" — only shown on the tutorial's results screen.
+function finishTutorial() {
+  backToMyPaper();
 }
 
 // manualMarks: { [leafKey]: true|false }, admin-entered correctness for
