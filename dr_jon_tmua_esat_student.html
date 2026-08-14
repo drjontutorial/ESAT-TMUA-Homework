@@ -245,7 +245,11 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 <!-- WARNING / START SCREEN -->
 <div class="hidden" id="warningScreen">
   <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
-  <div class="warning-box">
+  <div class="warning-box hidden" id="tutorialIntroBox" style="background:#f0fdf4;border-color:#6ee7b7;color:#065f46">
+    <h3 style="color:#065f46">🎓 Welcome — this is a free trial paper</h3>
+    <p style="margin:0">It's just <strong>3 questions</strong>, so you can see exactly how this portal works — starting a timer, typing answers, and submitting — before your real paper. Once you've done this one and seen your answers, your actual assigned paper will be waiting for you.</p>
+  </div>
+  <div class="warning-box" id="normalWarningBox">
     <h3>⚠️ Before you press Start</h3>
     <ul>
       <li><strong>You only get ONE timed attempt</strong> — the clock can't be reset once it begins, and it keeps running even if you leave the page.</li>
@@ -606,7 +610,10 @@ async function openSet(setId) {
   if(!sub || !sub.startedAt) {
     // brand new — show warning screen
     document.getElementById('startTitle').textContent = currentSet.title;
-    document.getElementById('startMeta').textContent = currentSet.totalQuestions + ' questions • ' + currentSet.timeLimitMinutes + ' minute time limit • Options A–' + optionLetter(currentSet.optionsCount);
+    const optionsPart = currentSet.optionsCount ? (' • Options A–' + optionLetter(currentSet.optionsCount)) : '';
+    document.getElementById('startMeta').textContent = currentSet.totalQuestions + ' questions • ' + currentSet.timeLimitMinutes + ' minute time limit' + optionsPart;
+    document.getElementById('tutorialIntroBox').classList.toggle('hidden', !currentSet.isTutorial);
+    document.getElementById('normalWarningBox').classList.toggle('hidden', !!currentSet.isTutorial);
     showPaperReadiness();
     document.getElementById('warningScreen').classList.remove('hidden');
     return;
