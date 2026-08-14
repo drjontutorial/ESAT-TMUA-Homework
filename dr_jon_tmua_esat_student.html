@@ -1288,20 +1288,36 @@ function showResults(sub, showOvertimeToo) {
   // accurate without needing a manual fix per student.
   const liveSet = homeworkSets[currentSetId] || currentSet;
   const manualMarks = sub.manualMarks;
+  // Long Questions papers are marked by Dr Jon, not auto-revealed — showing
+  // the score/model-answers immediately would defeat having a human review
+  // written work. Overtime/reattempt stay self-check (unaffected below),
+  // since those are practice only, separate from the official timed result.
+  const isLQ = liveSet.paperType === 'lq_16plus';
+
   const timedLive = computeScoreAgainst(sub.timedAnswers, liveSet, manualMarks);
   const keyChanged = sub.timedScore !== timedLive.score;
-  const pendingNote = timedLive.pending ? '<div class="frac" style="color:var(--gold);font-weight:700;margin-top:2px">⏳ ' + timedLive.pending + ' part' + (timedLive.pending===1?'':'s') + ' still awaiting Dr Jon\'s marking — this score will update once marked.</div>' : '';
+  const timedGrade = computeGrade(timedLive.score, liveSet.gradeBoundaries);
 
   document.getElementById('resultsTitle').textContent = liveSet.title + ' — Results';
-  const timedGrade = computeGrade(timedLive.score, liveSet.gradeBoundaries);
-  let summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>' + pendingNote;
-  if(timedGrade !== null) summaryHtml += '<div class="frac" style="font-weight:800;color:var(--brand);margin-top:2px">Estimated grade: ' + timedGrade + '</div>';
-  if(keyChanged) summaryHtml += '<div class="recalc-note">Recalculated against the current answer key</div>';
+
+  let summaryHtml;
+  if(isLQ) {
+    summaryHtml = '<div style="font-size:17px;font-weight:800;color:var(--brand);padding:8px 0 4px">📝 Your paper has been submitted</div><div class="frac" style="line-height:1.6">Dr Jon will review your answers and let you know your result — you don\'t need to do anything else for this attempt.</div>';
+  } else {
+    const pendingNote = timedLive.pending ? '<div class="frac" style="color:var(--gold);font-weight:700;margin-top:2px">⏳ ' + timedLive.pending + ' part' + (timedLive.pending===1?'':'s') + ' still awaiting Dr Jon\'s marking — this score will update once marked.</div>' : '';
+    summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>' + pendingNote;
+    if(timedGrade !== null) summaryHtml += '<div class="frac" style="font-weight:800;color:var(--brand);margin-top:2px">Estimated grade: ' + timedGrade + '</div>';
+    if(keyChanged) summaryHtml += '<div class="recalc-note">Recalculated against the current answer key</div>';
+  }
 
   if(sub.overtimeSubmittedAt) {
     const overtimeLive = computeScoreAgainst(sub.overtimeAnswers, liveSet, manualMarks, true);
     const overtimeGrade = computeGrade(overtimeLive.score, liveSet.gradeBoundaries);
-    summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + timedLive.pct + '%</div><div class="l">Timed' + (timedGrade!==null?' · '+timedGrade:'') + '</div></div><div class="score-box"><div class="n">' + overtimeLive.pct + '%</div><div class="l">Overtime' + (overtimeGrade!==null?' · '+overtimeGrade:'') + '</div></div></div>';
+    if(isLQ) {
+      summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + overtimeLive.pct + '%</div><div class="l">Overtime (self-check)' + (overtimeGrade!==null?' · '+overtimeGrade:'') + '</div></div></div>';
+    } else {
+      summaryHtml += '<div class="score-row"><div class="score-box"><div class="n">' + timedLive.pct + '%</div><div class="l">Timed' + (timedGrade!==null?' · '+timedGrade:'') + '</div></div><div class="score-box"><div class="n">' + overtimeLive.pct + '%</div><div class="l">Overtime' + (overtimeGrade!==null?' · '+overtimeGrade:'') + '</div></div></div>';
+    }
   }
   if(sub.reattemptSubmittedAt) {
     const reattemptLive = computeScoreAgainst(sub.reattemptAnswers, liveSet, manualMarks, true);
@@ -1312,10 +1328,15 @@ function showResults(sub, showOvertimeToo) {
 
   const noteEl = document.createElement('div');
   noteEl.className = 'submitted-note';
-  noteEl.innerHTML = '✅ Your submission has been recorded. There is no automatic notification sent to Dr Jon — but your answers and score are already saved and visible to him.';
+  noteEl.innerHTML = isLQ
+    ? '✅ Your submission has been recorded and will show up in Dr Jon\'s review queue — your score and feedback will appear here once he\'s marked it.'
+    : '✅ Your submission has been recorded. There is no automatic notification sent to Dr Jon — but your answers and score are already saved and visible to him.';
   document.getElementById('scoreSummary').appendChild(noteEl);
 
-  let breakdownHtml = '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
+  let breakdownHtml = '';
+  if(!isLQ) {
+    breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
+  }
   if(sub.overtimeSubmittedAt) {
     breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Overtime attempt — question breakdown</h2>' + buildBreakdown(sub.overtimeAnswers, liveSet, manualMarks, true) + '</div>';
   }

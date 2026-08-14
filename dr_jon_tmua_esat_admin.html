@@ -148,6 +148,10 @@ tbody tr:hover{background:#f8fafc}
 
     <!-- HOMEPAGE TAB -->
     <div id="homeTab">
+      <div class="card hidden" id="needsReviewCard">
+        <h2>📝 Needs Review</h2>
+        <div id="needsReviewList"></div>
+      </div>
       <div class="stats" id="homeStats"></div>
       <div class="card">
         <h2>🕐 Recent Activity</h2>
@@ -475,14 +479,37 @@ async function renderHomepage() {
     if(myToken !== homepageRenderToken) return; // a newer render started — drop this stale result
     const allSubsTree = snap.val() || {};
     const events = [];
+    const needsReview = [];
     Object.entries(allSubsTree).forEach(([setId, subsForSet]) => {
       const set = homeworkSets[setId];
       Object.entries(subsForSet || {}).forEach(([code, sub]) => {
         if(sub.timedSubmittedAt) {
           events.push({ ts: sub.timedSubmittedAt, code, setId, set, type: 'submitted' });
+          // Long Questions papers with any manual-marked part still pending
+          // your review — surfaced here so a completed paper never sits
+          // unnoticed. MCQ/SAT/etc papers are auto-graded and never appear.
+          if(set && set.paperType === 'lq_16plus') {
+            const live = computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks);
+            if(live.pending > 0) needsReview.push({ ts: sub.timedSubmittedAt, code, setId, set, pending: live.pending });
+          }
         }
       });
     });
+
+    const reviewCard = document.getElementById('needsReviewCard');
+    if(needsReview.length > 0) {
+      needsReview.sort((a,b) => a.ts - b.ts); // oldest-waiting first
+      let reviewHtml = '';
+      needsReview.forEach(r => {
+        const name = studentName(r.code) || r.code;
+        const time = new Date(r.ts).toLocaleString('en-GB');
+        reviewHtml += '<div class="qrow" style="background:#fef3c7;border-left:3px solid var(--gold);cursor:pointer" onclick="reviewJumpTo(\''+r.setId+'\',\''+r.code+'\')"><span>📝 <strong>'+name+'</strong> completed <em>'+(r.set?r.set.title:r.setId)+'</em> — '+r.pending+' part'+(r.pending===1?'':'s')+' need marking</span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
+      });
+      document.getElementById('needsReviewList').innerHTML = reviewHtml;
+      reviewCard.classList.remove('hidden');
+    } else {
+      reviewCard.classList.add('hidden');
+    }
     // newest paper created also shown in the feed
     Object.entries(homeworkSets).forEach(([setId, set]) => {
       if(set.createdAt) events.push({ ts: set.createdAt, setId, set, type: 'created' });
@@ -1462,6 +1489,21 @@ async function recalculateAllScores() {
 
 function showBreakdown(code) {
   showBreakdownFor(currentResultsSetId, code);
+}
+
+// Jumps from the Homepage "Needs Review" list straight to a student's
+// breakdown. Uses a one-time fetch rather than relying on the reactive
+// results listener from loadResultsForSet(), which is async and would
+// otherwise race with showBreakdownFor reading allSubmissions too early.
+async function reviewJumpTo(setId, code) {
+  switchTab('performance');
+  switchPerformanceView('paper');
+  document.getElementById('resultsSetSelect').value = setId;
+  loadResultsForSet();
+  const {ref,get,db} = window.firebaseDB;
+  const snap = await get(ref(db,'submissions/'+setId));
+  allSubmissions = snap.val() || {};
+  showBreakdownFor(setId, code);
 }
 
 function showBreakdownFor(setId, code) {
