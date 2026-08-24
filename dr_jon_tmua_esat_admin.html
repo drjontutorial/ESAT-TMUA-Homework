@@ -276,12 +276,6 @@ tbody tr:hover{background:#f8fafc}
             <input type="text" id="setPaperUrl" placeholder="https://drive.google.com/... — students only see this after they press Start">
           </div>
         </div>
-        <div class="form-row">
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#065f46;background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:10px;padding:10px 14px">
-            <input type="checkbox" id="setIsTutorial" style="width:16px;height:16px">
-            🎓 Use as the first-login tutorial paper
-          </label>
-        </div>
 
         <div id="mcqCreateSections">
         <div style="background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:12px;padding:14px;margin-bottom:14px">
@@ -1017,15 +1011,14 @@ function saveSet() {
   const paperType = document.getElementById('setPaperType').value;
   const timeLimit = parseInt(document.getElementById('setTimeLimit').value);
   const paperUrl = document.getElementById('setPaperUrl').value.trim();
-  const isTutorial = document.getElementById('setIsTutorial').checked;
+  // No UI control for this any more (Dr Jon's tutorial paper is already set
+  // up and isn't changing) — just preserve whatever an existing paper
+  // already had, and default new papers to false.
+  const isTutorial = !!(editingSetId && homeworkSets[editingSetId] && homeworkSets[editingSetId].isTutorial);
 
   if(!title) { alert('Please enter a title'); return; }
   if(!paperUrl) {
     if(!confirm('No paper link added — students won\'t have anything to open when they start. Save anyway?')) return;
-  }
-  if(isTutorial) {
-    const existingTutorialId = Object.keys(homeworkSets).find(id => homeworkSets[id].isTutorial && id !== editingSetId);
-    if(existingTutorialId && !confirm('"' + homeworkSets[existingTutorialId].title + '" is currently the tutorial paper. Make this one the tutorial instead?')) return;
   }
 
   const {ref,set,push,db} = window.firebaseDB;
@@ -1099,7 +1092,6 @@ function cancelEdit() {
   document.getElementById('setOptionsCount').value = 8;
   document.getElementById('setTimeLimit').value = 40;
   document.getElementById('setPaperUrl').value = '';
-  document.getElementById('setIsTutorial').checked = false;
   currentGradeBoundaries = [];
   pendingGradeBoundaries = null;
   document.getElementById('gradeBoundaryText').value = '';
@@ -1125,7 +1117,6 @@ async function editSet(setId) {
   document.getElementById('setPaperType').value = s.paperType || 'esat';
   document.getElementById('setTimeLimit').value = s.timeLimitMinutes;
   document.getElementById('setPaperUrl').value = s.paperUrl || '';
-  document.getElementById('setIsTutorial').checked = !!s.isTutorial;
   currentGradeBoundaries = s.gradeBoundaries || [];
   pendingGradeBoundaries = null;
   document.getElementById('gradeBoundaryText').value = '';
