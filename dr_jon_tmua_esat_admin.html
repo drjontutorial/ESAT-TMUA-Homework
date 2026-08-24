@@ -279,7 +279,7 @@ tbody tr:hover{background:#f8fafc}
         <div class="form-row">
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#065f46;background:#f0fdf4;border:1.5px solid #6ee7b7;border-radius:10px;padding:10px 14px">
             <input type="checkbox" id="setIsTutorial" style="width:16px;height:16px">
-            🎓 Use as the first-login tutorial — every new student is sent straight into this paper once, before they can see any real assigned papers. Results are always self-check (shown immediately, no review needed). Only one paper can be the tutorial at a time.
+            🎓 Use as the first-login tutorial paper
           </label>
         </div>
 
@@ -317,10 +317,6 @@ tbody tr:hover{background:#f8fafc}
             <div id="lqImportPreviewContainer"></div>
           </div>
 
-          <h2 style="font-size:15px;margin-top:10px">Questions &amp; Model Answers (manual entry / review)</h2>
-          <p class="sub" style="margin-bottom:10px">Each block below is one question the student sees on one screen. Add sub-parts (a, b(i), b(ii)...) if the question is split into parts — leave the label blank for a single-part question.</p>
-          <div id="lqGrid"></div>
-          <button class="btn btn-ghost" style="margin-bottom:10px" onclick="addLQParentQuestion()">➕ Add Question</button>
         </div>
 
         <div style="display:flex;gap:10px;margin-top:10px">
@@ -551,7 +547,8 @@ async function renderHomepage() {
       if(e.type === 'submitted') {
         const name = studentName(e.code) || e.code;
         const title = e.set ? e.set.title : '(deleted paper)';
-        html += '<div class="qrow" style="background:#f8fafc;border-left:3px solid var(--green)"><span>📤 <strong>'+name+'</strong> submitted <em>'+title+'</em></span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
+        const clickAttrs = e.set ? ' style="background:#f8fafc;border-left:3px solid var(--green);cursor:pointer" onclick="reviewJumpTo(\''+e.setId+'\',\''+e.code+'\')"' : ' style="background:#f8fafc;border-left:3px solid var(--green)"';
+        html += '<div class="qrow"'+clickAttrs+'><span>📤 <strong>'+name+'</strong> submitted <em>'+title+'</em></span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
       } else {
         html += '<div class="qrow" style="background:#f8fafc;border-left:3px solid var(--brand)"><span>📝 New paper created: <strong>'+e.set.title+'</strong></span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
       }
@@ -673,9 +670,14 @@ function toggleGridCell(q) {
 
 // ---- 16+ Long Questions: structure grid (one block per parent question,
 // each with one or more sub-part rows) ----
+// The manual per-question editing grid was removed from the UI (Import
+// only now) — this keeps updating lqStructure/lqAnswerKey/lqGradingMode
+// state and setTotalQ for whatever still calls it, it just has nothing to
+// paint into if #lqGrid isn't on the page.
 function renderLQGrid() {
   const container = document.getElementById('lqGrid');
   const parents = Object.keys(lqStructure).map(Number).sort((a,b) => a-b);
+  if(!container) { document.getElementById('setTotalQ').value = parents.length; return; }
   let html = '';
   parents.forEach(parent => {
     const leaves = lqStructure[parent].length ? lqStructure[parent] : [''];
@@ -1205,6 +1207,17 @@ function compareSetTitles(a, b) {
   return String(a.title||'').localeCompare(String(b.title||''), undefined, { numeric: true, sensitivity: 'base' });
 }
 
+// Groups the "Existing Sets" list collapses to under this size — one
+// paper-type group at a time can be expanded via "Show all" so the whole
+// list doesn't turn into an ever-growing wall as more papers get created.
+let expandedSetGroups = new Set();
+
+function toggleSetGroupExpanded(groupKey) {
+  if(expandedSetGroups.has(groupKey)) expandedSetGroups.delete(groupKey);
+  else expandedSetGroups.add(groupKey);
+  renderSetsList();
+}
+
 function renderSetsList() {
   const entries = Object.entries(homeworkSets);
   if(entries.length === 0) {
@@ -1218,8 +1231,13 @@ function renderSetsList() {
                            .sort((a, b) => compareSetTitles(a[1], b[1]));
     if(inGroup.length === 0) return;
 
+    const expanded = expandedSetGroups.has(group.key);
+    // Collapsed view: just the most recently created paper in this group.
+    const mostRecent = inGroup.slice().sort((a, b) => (b[1].createdAt||0) - (a[1].createdAt||0))[0];
+    const toShow = expanded ? inGroup : [mostRecent];
+
     html += '<div class="set-group-header">' + group.label + '<span class="count">' + inGroup.length + '</span></div>';
-    inGroup.forEach(([id, s]) => {
+    toShow.forEach(([id, s]) => {
       const paperStatus = s.paperUrl
         ? '<span style="color:#059669;font-weight:700">📄 Paper linked</span>'
         : '<span style="color:var(--warning);font-weight:700">⚠️ No paper link</span>';
@@ -1230,6 +1248,11 @@ function renderSetsList() {
         + '<div class="m">'+s.totalQuestions+' questions • A–'+optionLetter(s.optionsCount)+' • '+s.timeLimitMinutes+' min • '+paperStatus+boundaryStatus+'</div></div>'
         + '<div class="set-actions"><button class="btn btn-ghost" onclick="editSet(\''+id+'\')">Edit</button><button class="btn btn-danger" onclick="deleteSet(\''+id+'\')">Delete</button></div></div>';
     });
+    if(inGroup.length > 1) {
+      html += '<div style="text-align:center;margin:4px 0 14px"><button class="btn btn-ghost" style="font-size:12px;padding:6px 14px" onclick="toggleSetGroupExpanded(\''+group.key+'\')">'
+        + (expanded ? '▲ Show only most recent' : '▼ Show all ' + inGroup.length + ' papers')
+        + '</button></div>';
+    }
   });
   document.getElementById('setsListContainer').innerHTML = html;
 }
