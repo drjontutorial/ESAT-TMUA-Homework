@@ -397,11 +397,32 @@ function adminLogout() {
   document.getElementById('pwdInput').value = '';
 }
 
+// Firebase turns an object whose keys are all sequential integers into a
+// real JS array, inserting a null "hole" at index 0. LQ question numbers
+// start at 1 (never 0), so structure/answerKey/gradingMode hit this on
+// every single LQ paper — silently poisoning any Object.keys() loop over
+// them with a phantom "parent 0" whose value is null. Strip that out right
+// after every fetch so nothing downstream has to know about it.
+function normalizeLQFields(sets) {
+  Object.values(sets || {}).forEach(s => {
+    if(s && s.paperType === 'lq_16plus') {
+      ['structure','answerKey','gradingMode'].forEach(field => {
+        if(s[field] && typeof s[field] === 'object') {
+          const clean = {};
+          Object.keys(s[field]).forEach(k => { if(s[field][k] != null) clean[k] = s[field][k]; });
+          s[field] = clean;
+        }
+      });
+    }
+  });
+  return sets;
+}
+
 function loadData() {
   if(!window.firebaseDB) { setTimeout(loadData,100); return; }
   const {ref,onValue,db} = window.firebaseDB;
   onValue(ref(db,'homeworkSets'), snap => {
-    homeworkSets = snap.val() || {};
+    homeworkSets = normalizeLQFields(snap.val() || {});
     renderSetsList();
     populateResultsSetSelect();
     populateSetDropdowns();
