@@ -39,6 +39,12 @@ function ref(dbInstance, path) {
 }
 
 window.firebaseDB = { ref, get, set, update, onValue, push, db };
+
+// Firebase's estimate of (server clock - this device's clock). Lets timing
+// use real time instead of trusting the student's device clock, which can
+// be changed to buy extra minutes.
+window.serverTimeOffset = 0;
+onValue(_ref(db, '.info/serverTimeOffset'), snap => { window.serverTimeOffset = snap.val() || 0; });
 </script>
 
 <style>
@@ -376,7 +382,9 @@ let homeworkSets = {};
 let currentSetId = null;
 let currentSet = null;
 let currentAnswers = {};
-let currentMode = 'timed'; // 'timed' | 'overtime'
+let currentMode = null; // null (not in an exam) | 'timed' | 'overtime' | 'reattempt'
+let currentStartedAt = null; // server-time start of the current timed attempt
+let timeUpAnswers = null; // answers frozen at the moment time ran out — anything changed after that never counts as timed
 let timerInterval = null;
 let remainingSeconds = 0;
 let timedFinalized = false; // guards against double-invoking finalizeTimed — flips true immediately, before the write
@@ -384,6 +392,26 @@ let timedWriteConfirmed = false; // true only once the timed-submission write ha
 let submissionWriteInFlight = false; // true while ANY submission write (timed/overtime/reattempt) is in progress
 let currentQIndex = 0; // 0-based index of the question currently shown
 let flaggedQuestions = new Set(); // question numbers (1-based) flagged for review, per attempt
+
+// Resumed drafts with only numeric keys come back from Firebase as arrays.
+// Adding a sub-part key like "5a" to an array and saving it would silently
+// drop that key, so always work on a plain object.
+function normalizeAnswers(a) {
+  const out = {};
+  Object.keys(a || {}).forEach(k => { if(a[k] != null && a[k] !== '') out[k] = a[k]; });
+  return out;
+}
+
+function serverNow() { return Date.now() + (window.serverTimeOffset || 0); }
+
+// The latest moment a timed submission can legitimately be stamped with.
+function timedDeadlineServer() {
+  return currentStartedAt + currentSet.timeLimitMinutes * 60 * 1000;
+}
+
+function escapeHtml(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 function showMsg(id, text, cls) {
   const el = document.getElementById(id);
@@ -501,7 +529,10 @@ function compareSetTitles(a, b) {
   return String(a.title||'').localeCompare(String(b.title||''), undefined, { numeric: true, sensitivity: 'base' });
 }
 
+let paperCardRenderToken = 0;
+
 async function renderMyPaperCard() {
+  const myToken = ++paperCardRenderToken;
   const container = document.getElementById('myPaperContent');
   const setIds = myApprovedSetIds();
   if(setIds.length === 0) {
@@ -525,9 +556,10 @@ async function renderMyPaperCard() {
         else if(sub && sub.timedSubmittedAt) badge = '<span class="badge overtime-pending">Timed done — overtime available</span>';
         else if(sub && sub.startedAt) badge = '<span class="badge not-started">In progress</span>';
       } catch(e) {}
-      html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+set.title+'</div><div class="m">'+set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit</div>'+badge+'</div>';
+      html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+escapeHtml(set.title)+'</div><div class="m">'+set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit</div>'+badge+'</div>';
     }
   }
+  if(myToken !== paperCardRenderToken) return; // a newer render started — don't overwrite it with stale HTML
   container.innerHTML = html;
 }
 
@@ -613,6 +645,7 @@ function buildProgressChartSvg(rows) {
 function backToMyPaper() {
   clearInterval(timerInterval);
   stopUnloadProtection();
+  currentMode = null;
   document.getElementById('timerBox').classList.add('hidden');
   ['warningScreen','overtimeWarningScreen','quizScreen','resultsScreen'].forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('studentHomeCard').classList.remove('hidden');
@@ -653,14 +686,23 @@ async function openSet(setId) {
   }
 
   // started but not finalized — check if time has expired while away
-  const elapsedSec = Math.floor((Date.now() - sub.startedAt) / 1000);
+  currentStartedAt = sub.startedAt;
+  const elapsedSec = Math.floor((serverNow() - sub.startedAt) / 1000);
   const limitSec = currentSet.timeLimitMinutes * 60;
-  currentAnswers = sub.draftAnswers || {};
+  currentAnswers = normalizeAnswers(sub.draftAnswers);
+  // Keep whatever they'd already flagged before leaving — previously this
+  // was reset to empty, silently wiping flags on every resume.
+  flaggedQuestions = new Set(sub.flaggedQuestions || []);
+  timeUpAnswers = null;
+  timedFinalized = false;
+  timedWriteConfirmed = false;
 
   if(elapsedSec >= limitSec) {
     // time expired while away — finalize timed using draft, then go overtime
+    currentMode = 'timed';
+    timeUpAnswers = JSON.parse(JSON.stringify(currentAnswers));
     try {
-      await finalizeTimed(sub.startedAt + limitSec*1000);
+      await finalizeTimed(timedDeadlineServer());
     } catch(e) {
       // finalizeTimed already alerted the student — send them back to their
       // paper list rather than leaving the screen stuck on nothing.
@@ -672,9 +714,6 @@ async function openSet(setId) {
     // resume timed session with remaining time
     remainingSeconds = limitSec - elapsedSec;
     currentMode = 'timed';
-    timedFinalized = false;
-    timedWriteConfirmed = false;
-    flaggedQuestions = new Set();
     setupExam('resume');
     document.getElementById('quizScreen').classList.remove('hidden');
     document.getElementById('timerBox').classList.remove('hidden');
@@ -720,11 +759,19 @@ async function beginTimedTest() {
     }
   }
 
-  const startedAt = Date.now();
+  const startedAt = serverNow();
   const {ref,set,db} = window.firebaseDB;
-  await set(ref(db,'submissions/'+currentSetId+'/'+studentCode), {
-    studentCode, startedAt, draftAnswers: {}
-  });
+  try {
+    await set(ref(db,'submissions/'+currentSetId+'/'+studentCode), {
+      studentCode, startedAt, draftAnswers: {}
+    });
+  } catch(e) {
+    document.getElementById('startWarnMsg').textContent = '⚠️ Could not start — please check your internet connection and try again. Your timer has NOT started.';
+    document.getElementById('startWarnMsg').className = 'msg error';
+    return;
+  }
+  currentStartedAt = startedAt;
+  timeUpAnswers = null;
   currentAnswers = {};
   currentMode = 'timed';
   timedFinalized = false;
@@ -816,6 +863,10 @@ function tickTimer() {
   updateTimerDisplay();
   if(remainingSeconds <= 0) {
     clearInterval(timerInterval);
+    // Freeze the timed answers at this exact moment. If the save below fails
+    // and the student keeps changing answers before retrying Submit, those
+    // later changes must never count toward the timed score.
+    if(currentMode === 'timed' && !timeUpAnswers) timeUpAnswers = JSON.parse(JSON.stringify(currentAnswers));
     // NOTE: do NOT call stopUnloadProtection() here — the tab-close warning
     // must stay active until the submission write actually succeeds
     // (finalizeTimed only lifts it once timedWriteConfirmed is true). Lifting
@@ -832,7 +883,7 @@ function tickTimer() {
 // They must explicitly press "Continue to overtime attempt" to keep going.
 async function forceSubmitDueToTimeout() {
   try {
-    await finalizeTimed(timerDeadline);
+    await finalizeTimed(timedDeadlineServer());
   } catch(e) {
     return; // finalizeTimed already alerted the student — stay on the exam screen so Submit can be retried
   }
@@ -854,7 +905,10 @@ function onVisibilityChange() {
 // caused the original bug (protection was removed a moment too early,
 // right as the critical save was starting).
 function beforeUnloadHandler(e) {
-  if(submissionWriteInFlight || (currentMode === 'timed' && !timedWriteConfirmed)) {
+  // Only warn while actually inside a timed exam (or mid-save) — not on the
+  // login/home screens, where there's nothing to lose.
+  const inExam = !document.getElementById('quizScreen').classList.contains('hidden');
+  if(submissionWriteInFlight || (inExam && currentMode === 'timed' && !timedWriteConfirmed)) {
     e.preventDefault();
     e.returnValue = 'Your work is still being saved. Please wait a moment before closing this tab.';
     return e.returnValue;
@@ -882,8 +936,11 @@ function setupExam(mode) {
     currentQIndex = 0;
   } else if(mode === 'resume') {
     currentQIndex = 0;
-    for(let q=1; q<=currentSet.totalQuestions; q++) {
-      if(!currentAnswers[q]) { currentQIndex = q-1; break; }
+    const isLQ = currentSet.paperType === 'lq_16plus';
+    const parents = isLQ ? lqParentNumbers(currentSet) : null;
+    for(let pos=0; pos<currentSet.totalQuestions; pos++) {
+      const answered = isLQ ? isLQParentAnswered(parents[pos]) : !!currentAnswers[pos+1];
+      if(!answered) { currentQIndex = pos; break; }
     }
   }
   renderCurrentQuestion();
@@ -1030,6 +1087,7 @@ function goNextQuestion() {
 // the others) — called on every "Next" and on Quit, so nothing is lost if
 // the student closes the tab mid-attempt.
 function saveProgress() {
+  if(!currentMode || (currentMode === 'timed' && timeUpAnswers)) return;
   const draftField = currentMode === 'timed' ? 'draftAnswers'
     : currentMode === 'overtime' ? 'overtimeDraftAnswers'
     : 'reattemptDraftAnswers';
@@ -1093,14 +1151,20 @@ function closeNavigator() {
   document.getElementById('navigatorModal').classList.remove('show');
 }
 
+// Autosaves the timed draft. Skipped once time has run out — the frozen
+// timeUpAnswers is the only valid timed record from then on, and a
+// resumed session must not pick up changes made after the deadline.
+function saveTimedDraft() {
+  if(currentMode !== 'timed' || timeUpAnswers) return;
+  const {ref,update,db} = window.firebaseDB;
+  update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
+}
+
 function setAnswer(letter) {
   const q = currentQIndex + 1;
   currentAnswers[q] = letter;
   logEvent('answer', { question: q, answer: letter, mode: currentMode });
-  if(currentMode === 'timed') {
-    const {ref,update,db} = window.firebaseDB;
-    update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
-  }
+  saveTimedDraft();
 }
 
 // Grid-in text input: update in-memory on every keystroke (so Next/Navigator
@@ -1109,18 +1173,14 @@ function setAnswer(letter) {
 // same as setAnswer does for a normal MCQ pick.
 function setGridAnswer(value) {
   const q = currentQIndex + 1;
-  currentAnswers[q] = value;
+  if(value) currentAnswers[q] = value; else delete currentAnswers[q];
 }
 
 function commitGridAnswer(value) {
-  const q = currentQIndex + 1;
-  currentAnswers[q] = value;
-  if(!value) return;
-  logEvent('answer', { question: q, answer: value, mode: currentMode });
-  if(currentMode === 'timed') {
-    const {ref,update,db} = window.firebaseDB;
-    update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
-  }
+  setGridAnswer(value);
+  // Still save when cleared — otherwise an erased answer comes back on resume.
+  if(value) logEvent('answer', { question: currentQIndex + 1, answer: value, mode: currentMode });
+  saveTimedDraft();
 }
 
 // 16+ Long Questions: same in-memory-then-commit pattern as grid-in, but
@@ -1163,7 +1223,7 @@ function lqRenderFilledTemplate(template, given) {
   const parts = String(given || '').split('|||');
   let i = 0;
   const filled = template.replace(LQ_BLANK_RE, () => {
-    const v = parts[i] !== undefined && parts[i] !== '' ? parts[i] : '—';
+    const v = parts[i] !== undefined && parts[i] !== '' ? escapeHtml(parts[i]) : '—';
     i++;
     return v;
   });
@@ -1171,38 +1231,32 @@ function lqRenderFilledTemplate(template, given) {
 }
 
 function setLQAnswer(leafKey, value) {
-  currentAnswers[leafKey] = value;
+  if(value) currentAnswers[leafKey] = value; else delete currentAnswers[leafKey];
 }
 
 // One blank within a templated leaf — reads/writes its slot in the "|||"
 // joined string kept at currentAnswers[leafKey], without disturbing the
-// other blanks' already-typed values.
+// other blanks' already-typed values. If every blank ends up empty the leaf
+// is removed entirely, so "|||" never counts as an answered-but-wrong part.
 function setLQBlankAnswer(leafKey, blankIndex, value) {
   const parts = (currentAnswers[leafKey] || '').split('|||');
   while(parts.length <= blankIndex) parts.push('');
   parts[blankIndex] = value;
-  currentAnswers[leafKey] = parts.join('|||');
+  if(parts.every(p => p === '')) delete currentAnswers[leafKey];
+  else currentAnswers[leafKey] = parts.join('|||');
 }
 
 function commitLQBlankAnswer(leafKey, blankIndex, value) {
   setLQBlankAnswer(leafKey, blankIndex, value);
   const joined = currentAnswers[leafKey];
-  if(!joined) return;
-  logEvent('answer', { question: leafKey, answer: joined, mode: currentMode });
-  if(currentMode === 'timed') {
-    const {ref,update,db} = window.firebaseDB;
-    update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
-  }
+  if(joined) logEvent('answer', { question: leafKey, answer: joined, mode: currentMode });
+  saveTimedDraft();
 }
 
 function commitLQAnswer(leafKey, value) {
-  currentAnswers[leafKey] = value;
-  if(!value) return;
-  logEvent('answer', { question: leafKey, answer: value, mode: currentMode });
-  if(currentMode === 'timed') {
-    const {ref,update,db} = window.firebaseDB;
-    update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { draftAnswers: currentAnswers }).catch(()=>{});
-  }
+  setLQAnswer(leafKey, value);
+  if(value) logEvent('answer', { question: leafKey, answer: value, mode: currentMode });
+  saveTimedDraft();
 }
 
 // For grid-in questions the stored correct answer may list several accepted
@@ -1259,8 +1313,12 @@ async function finalizeTimed(finalizedAt) {
   if(timedFinalized) return;
   timedFinalized = true;
   clearInterval(timerInterval);
-  const { score, total, pct } = computeScore(currentAnswers);
-  const fields = { timedAnswers: currentAnswers, timedSubmittedAt: finalizedAt, timedScore: score, timedTotal: total, timedPercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
+  // Once time is up, only the answers frozen at the deadline count, and the
+  // submission can never be stamped later than the deadline itself.
+  const answersToSubmit = timeUpAnswers || currentAnswers;
+  if(currentStartedAt) finalizedAt = Math.min(finalizedAt, timedDeadlineServer());
+  const { score, total, pct } = computeScore(answersToSubmit);
+  const fields = { timedAnswers: answersToSubmit, timedSubmittedAt: finalizedAt, timedScore: score, timedTotal: total, timedPercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
 
   try {
     await writeSubmissionFieldsWithRetry(fields);
@@ -1313,8 +1371,13 @@ async function confirmSubmit() {
 
 async function doSubmit() {
   if(currentMode === 'timed' && !timedFinalized) {
+    // Submit pressed after the deadline (e.g. retrying after a failed
+    // auto-save) — freeze now if the timer tick hadn't already.
+    if(currentStartedAt && serverNow() >= timedDeadlineServer() && !timeUpAnswers) {
+      timeUpAnswers = JSON.parse(JSON.stringify(currentAnswers));
+    }
     try {
-      await finalizeTimed(Date.now());
+      await finalizeTimed(serverNow());
     } catch(e) {
       return; // finalizeTimed already alerted the student — stay on the exam screen so Submit can be retried
     }
@@ -1326,7 +1389,7 @@ async function doSubmit() {
   }
   if(currentMode === 'reattempt') {
     const { score, total, pct } = computeScore(currentAnswers);
-    const fields = { reattemptAnswers: currentAnswers, reattemptSubmittedAt: Date.now(), reattemptScore: score, reattemptTotal: total, reattemptPercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
+    const fields = { reattemptAnswers: currentAnswers, reattemptSubmittedAt: serverNow(), reattemptScore: score, reattemptTotal: total, reattemptPercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
     try {
       await writeSubmissionFieldsWithRetry(fields);
     } catch(e) {
@@ -1342,7 +1405,7 @@ async function doSubmit() {
   }
   // overtime submit
   const { score, total, pct } = computeScore(currentAnswers);
-  const fields = { overtimeAnswers: currentAnswers, overtimeSubmittedAt: Date.now(), overtimeScore: score, overtimeTotal: total, overtimePercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
+  const fields = { overtimeAnswers: currentAnswers, overtimeSubmittedAt: serverNow(), overtimeScore: score, overtimeTotal: total, overtimePercentage: pct, flaggedQuestions: Array.from(flaggedQuestions) };
   try {
     await writeSubmissionFieldsWithRetry(fields);
   } catch(e) {
@@ -1493,7 +1556,7 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
   for(let q=1; q<=total; q++) {
     if(answersMatch(answers[q], set.answerKey[q])) score++;
   }
-  return { score, total, pct: Math.round((score/total)*1000)/10 };
+  return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0 };
 }
 
 // gradeBoundaries: [{min: <correct answers needed>, grade: <label>}, ...],
@@ -1521,7 +1584,7 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
         const isManual = (set.gradingMode||{})[leafKey] === 'manual';
         const rawModelAnswer = (set.answerKey||{})[leafKey] || '';
         const spec = parseLQAnswerSpec(rawModelAnswer);
-        const given = spec.template ? (rawGiven ? lqRenderFilledTemplate(spec.template, rawGiven) : '—') : (rawGiven || '—');
+        const given = spec.template ? (rawGiven ? lqRenderFilledTemplate(spec.template, rawGiven) : '—') : (rawGiven ? escapeHtml(rawGiven) : '—');
         const modelAnswer = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : formatMathText(String(rawModelAnswer || '').split('|').join(' or '));
         const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '') + (spec.template ? ' — ' + formatMathText(spec.template) : '');
         let cls, verdictText, extra = '';
@@ -1549,7 +1612,7 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
 
   let html = '';
   for(let q=1; q<=set.totalQuestions; q++) {
-    const given = answers[q] || '—';
+    const given = answers[q] ? escapeHtml(answers[q]) : '—';
     const correct = set.answerKey[q];
     const correctDisplay = String(correct || '').split('|').join(' or ');
     const isCorrect = answersMatch(answers[q], correct);

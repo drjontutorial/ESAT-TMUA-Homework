@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dr Jon's Test Prep Hub — Admin</title>
+<meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,900&display=swap" rel="stylesheet">
 <script type="module">
@@ -380,6 +381,13 @@ let editingStudentCode = null;
 let currentResultsSetId = null;
 
 function optionLetter(n) { return 'ABCDEFGH'[n-1]; }
+
+// Anything a student typed is escaped before being put into this page's
+// HTML — this panel can edit/delete everything, so it must never run markup
+// that came from a student's answer box.
+function escapeHtml(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 function studentName(code) { return (students[code] && students[code].name) || ''; }
 
 function adminLogin() {
@@ -866,7 +874,6 @@ function applyLQImport() {
   document.getElementById('lqImportPreviewContainer').innerHTML = '<div class="confirm-ready" style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600">✅ Applied. Double check the questions below, then click "💾 Save Set".</div>';
   document.getElementById('lqImportText').value = '';
   renderLQGrid();
-  document.getElementById('lqGrid').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 function cancelLQImportPreview() {
@@ -1221,7 +1228,7 @@ function deleteSet(setId) {
   const s = homeworkSets[setId];
   if(!confirm('Delete "' + (s?s.title:setId) + '"? This does NOT delete existing student submissions.')) return;
   const {ref,remove,db} = window.firebaseDB;
-  remove(ref(db,'homeworkSets/'+setId));
+  remove(ref(db,'homeworkSets/'+setId)).catch(err => alert('❌ Delete failed: ' + err));
 }
 
 // Papers created before "Paper Type" existed have no paperType and are
@@ -1383,7 +1390,7 @@ function lqRenderFilledTemplate(template, given) {
   const parts = String(given || '').split('|||');
   let i = 0;
   const filled = template.replace(LQ_BLANK_RE, () => {
-    const v = parts[i] !== undefined && parts[i] !== '' ? parts[i] : '—';
+    const v = parts[i] !== undefined && parts[i] !== '' ? escapeHtml(parts[i]) : '—';
     i++;
     return v;
   });
@@ -1678,7 +1685,7 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
       const isManual = (set.gradingMode||{})[leafKey] === 'manual';
       const spec = parseLQAnswerSpec(modelAnswer);
       const displayLabel = spec.template ? (label2?'('+label2+') ':'') + formatMathText(spec.template) : (label2 ? ('('+label2+')') : '');
-      const givenDisplay = spec.template ? (given ? lqRenderFilledTemplate(spec.template, given) : '—') : (given || '—');
+      const givenDisplay = spec.template ? (given ? lqRenderFilledTemplate(spec.template, given) : '—') : (given ? escapeHtml(given) : '—');
       // Human-readable model answer, whether templated or plain — never the
       // raw "template => values" storage string.
       const modelAnswerDisplay = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : formatMathText(String(modelAnswer||'').split('|').join(' or '));
@@ -1992,7 +1999,9 @@ function describeLogEvent(e) {
   switch(e.type) {
     case 'confirm_start': return '✅ Confirmed start' + (e.paperOpened===false ? ' (paper pop-up was blocked)' : ' — paper opened') + ', ' + e.timeLimitMinutes + ' min timer began';
     case 'confirm_start_overtime': return '⏱️ Confirmed start of overtime attempt';
-    case 'answer': return '📝 Answered Q' + e.question + ': ' + e.answer + ' (' + e.mode + ')';
+    case 'answer': return '📝 Answered Q' + escapeHtml(e.question) + ': ' + escapeHtml(e.answer) + ' (' + escapeHtml(e.mode) + ')';
+    case 'quit': return '🚪 Left the exam screen (' + escapeHtml(e.mode) + ')';
+    case 'confirm_start_reattempt': return '🔄 Started a practice reattempt';
     case 'confirm_submit': return '📤 Confirmed submit (' + e.mode + ') — ' + e.answeredCount + '/' + e.totalQuestions + ' answered';
     default: return e.type || 'Unknown event';
   }
@@ -2043,7 +2052,7 @@ function buildBreakdownSection(label, answers, set, flagged) {
       incorrect++; cls='incorrect'; verdict='✗ Correct: '+String(key||'').split('|').join(' or ');
     }
     const flagTag = flagged.includes(q) ? ' <span title="Flagged for review by the student">🚩</span>' : '';
-    rows += '<div class="qrow '+cls+'"><span>Q'+q+flagTag+': answered <strong>'+(given||'—')+'</strong></span><span>'+verdict+'</span></div>';
+    rows += '<div class="qrow '+cls+'"><span>Q'+q+flagTag+': answered <strong>'+(given ? escapeHtml(given) : '—')+'</strong></span><span>'+verdict+'</span></div>';
   }
   const grade = computeGrade(correct, set.gradeBoundaries);
   const gradeText = grade !== null ? ' <span style="color:var(--brand);font-weight:800">— Grade: '+grade+'</span>' : '';
@@ -2072,8 +2081,10 @@ function saveStudent() {
   const {ref,set,get,db} = window.firebaseDB;
 
   if(editingStudentCode) {
-    // editing: keep existing approvedSetIds, just update name/password
-    set(ref(db,'students/'+code), Object.assign({}, students[code], { name, password: pwd })).then(() => {
+    // editing: only touch name/password — update() leaves approvedSetIds,
+    // onboardingComplete etc. exactly as they are in the database, rather
+    // than overwriting the whole record with a possibly-stale local copy.
+    window.firebaseDB.update(ref(db,'students/'+code), { name, password: pwd }).then(() => {
       alert('✅ Profile updated: ' + name);
       cancelStudentEdit();
     }).catch(err => alert('Error: ' + err));
@@ -2116,7 +2127,7 @@ function deleteStudent(code) {
   const s = students[code];
   if(!confirm('Delete student "' + (s?s.name:code) + '" (' + code + ')? This does NOT delete their past submissions.')) return;
   const {ref,remove,db} = window.firebaseDB;
-  remove(ref(db,'students/'+code));
+  remove(ref(db,'students/'+code)).catch(err => alert('❌ Delete failed: ' + err));
 }
 
 function renderStudentsList() {
@@ -2208,13 +2219,12 @@ function bulkAssignPaper() {
   if(!confirm('Approve "' + setTitle + '" for ' + selected.length + ' student(s)? This adds to what they already have.')) return;
 
   const {ref,update,db} = window.firebaseDB;
-  let done = 0;
-  selected.forEach(code => {
-    update(ref(db,'students/'+code+'/approvedSetIds'), { [setId]: true }).then(() => {
-      done++;
-      if(done === selected.length) alert('✅ Approved "' + setTitle + '" for ' + selected.length + ' student(s).');
-    });
-  });
+  // One atomic write for everyone — either all students get it or none do.
+  const writes = {};
+  selected.forEach(code => { writes['students/'+code+'/approvedSetIds/'+setId] = true; });
+  update(ref(db), writes)
+    .then(() => alert('✅ Approved "' + setTitle + '" for ' + selected.length + ' student(s).'))
+    .catch(err => alert('❌ Approve failed: ' + err));
 }
 
 // ---- Student Detail (drill-down: all papers, dates, scores, chart) ----
