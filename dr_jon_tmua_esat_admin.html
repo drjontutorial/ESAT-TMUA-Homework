@@ -305,7 +305,7 @@ tbody tr:hover{background:#f8fafc}
         <div id="lqCreateSection" class="hidden">
           <div style="background:#fdf4ff;border:1.5px solid #e9d5ff;border-radius:12px;padding:14px;margin-bottom:14px">
             <div style="font-weight:800;font-size:13px;color:#6b21a8;margin-bottom:6px">📥 Import Long Questions (recommended)</div>
-            <p style="font-size:12px;color:#6b21a8;margin-bottom:10px">Get another Claude chat to generate model answers, then paste its reply below — one line per question or sub-part, as <code>label: answer</code>. Sub-parts share a question number, e.g. <code>5a</code>, <code>5bi</code>, <code>5bii</code>. Prefix with <code>[manual]</code> for anything needing your judgement instead of an exact match. Prefix with <code>[mcq]</code> (or <code>[mcq6]</code> for 6 options) to show clickable A–D style buttons instead of a typed answer — the answer itself is just the correct letter, e.g. <code>1: [mcq] B</code>. Prefix with <code>[sketch]</code> for a question needing a hand-drawn diagram — the student gets a small drawing canvas instead of a text box, and you judge it by eye like <code>[manual]</code> (whatever follows is just a note to yourself, e.g. <code>3ai: [sketch] two 50Ω resistors in parallel</code>). Prefix with <code>[table]</code> for a fill-in-the-blanks table — write the template as rows separated by <code>;</code> and cells separated by <code>|</code>, with <code>___</code>/<code>~~~</code> for the blank cells, e.g. <code>4: [table] Point|A|B|C; PD (V)|___|___|~~~ => 3, 6, 2x</code>.</p>
+            <p style="font-size:12px;color:#6b21a8;margin-bottom:10px">Get another Claude chat to generate model answers, then paste its reply below — one line per question or sub-part, as <code>label: answer</code>. Sub-parts share a question number, e.g. <code>5a</code>, <code>5bi</code>, <code>5bii</code>. Prefix with <code>[manual]</code> for anything needing your judgement instead of an exact match. Prefix with <code>[mcq]</code> (or <code>[mcq6]</code> for 6 options) to show clickable A–D style buttons instead of a typed answer — the answer itself is just the correct letter, e.g. <code>1: [mcq] B</code>. Prefix with <code>[sketch]</code> for a question needing a hand-drawn diagram — the student gets a small drawing canvas instead of a text box, and you judge it by eye like <code>[manual]</code> (whatever follows is just a note to yourself, e.g. <code>3ai: [sketch] two 50Ω resistors in parallel</code>). Prefix with <code>[table]</code> for a fill-in-the-blanks table — write the template as rows separated by <code>;</code> and cells separated by <code>|</code>, with <code>___</code>/<code>~~~</code> for the blank cells, e.g. <code>4: [table] Point|A|B|C; PD (V)|___|___|~~~ => 3, 6, 2x</code>. <code>[manual]</code>/<code>[sketch]</code> are worth 1 mark by default — add <code>:N</code> for a part worth more, e.g. <code>[manual:3]</code> or <code>[sketch:2]</code>. Whoever marks these can write <code>{"marks": 2, "feedback": "..."}</code> into that leaf's <code>manualMarks</code> entry for partial credit and a comment the student sees next to their answer — a plain <code>true</code>/<code>false</code> still works too, for full/zero credit with no comment.</p>
             <button class="btn btn-ghost" onclick="copyLQClaudePrompt()">🤖 Copy Prompt for Claude</button>
             <textarea id="lqImportText" placeholder="1: 42&#10;2: 3/4&#10;5a: x = 3&#10;5bi: [manual] Explain why the gradient is negative...&#10;5bii: 12" style="width:100%;min-height:120px;margin-top:10px;padding:10px;border:1.5px solid var(--line);border-radius:10px;font-family:monospace;font-size:13px"></textarea>
             <button class="btn btn-primary" style="margin-top:10px" onclick="previewLQImport()">👀 Preview Import</button>
@@ -364,7 +364,8 @@ let pendingGradeBoundaries = null; // parsed-but-not-yet-applied preview of a pa
 // alone if no sub-part (e.g. "1"), or parent+label if it has one (e.g. "5a", "5bi").
 let lqStructure = {};
 let lqAnswerKey = {};
-let lqGradingMode = {}; // leafKey -> 'auto' | 'manual'
+let lqGradingMode = {}; // leafKey -> 'auto' | 'manual' | 'sketch' | 'table' | 'mcqN'
+let lqMaxMarks = {}; // leafKey -> max marks for a manual/sketch leaf (default 1 if absent)
 let pendingLQImport = null;
 
 // Paper types that use the LQ structure/leaf engine (parent/sub-part
@@ -425,7 +426,7 @@ function adminLogout() {
 function normalizeLQFields(sets) {
   Object.values(sets || {}).forEach(s => {
     if(s && isLQPaperType(s.paperType)) {
-      ['structure','answerKey','gradingMode'].forEach(field => {
+      ['structure','answerKey','gradingMode','leafMaxMarks'].forEach(field => {
         if(s[field] && typeof s[field] === 'object') {
           const clean = {};
           Object.keys(s[field]).forEach(k => { if(s[field][k] != null) clean[k] = s[field][k]; });
@@ -872,6 +873,7 @@ function parseLQImportText(raw) {
   const structure = {};
   const answerKey = {};
   const gradingMode = {};
+  const leafMaxMarks = {};
   const order = [];
   raw.split('\n').forEach(line => {
     line = line.trim();
@@ -883,14 +885,20 @@ function parseLQImportText(raw) {
     let answer = m[3].trim();
     // Exactly one of these prefixes may lead the answer text — whichever
     // matches first wins. [manual]/[sketch] both need a human to judge them
-    // (sketch just shows an image instead of text); [table]/plain blanks and
-    // [mcqN] are auto-graded the normal way.
+    // (sketch just shows an image instead of text) and can optionally carry
+    // a max-marks value for partial credit, e.g. [manual:3] or [sketch:2] —
+    // default is 1 mark if omitted. [table]/plain blanks and [mcqN] are
+    // auto-graded the normal way and always worth 1.
     let gm = 'auto';
-    const prefixMatch = answer.match(/^\[(manual|sketch|table|mcq(\d*))\]\s*/i);
+    const prefixMatch = answer.match(/^\[(manual|sketch|table|mcq)(\d*)(?::(\d+))?\]\s*/i);
     if(prefixMatch) {
       const kind = prefixMatch[1].toLowerCase();
       answer = answer.slice(prefixMatch[0].length).trim();
-      gm = kind.startsWith('mcq') ? 'mcq' + (prefixMatch[2] || '4') : kind;
+      gm = kind === 'mcq' ? 'mcq' + (prefixMatch[2] || '4') : kind;
+      if((gm === 'manual' || gm === 'sketch') && prefixMatch[3]) {
+        const leafKeyForMax = lqLeafKey(parent, label);
+        leafMaxMarks[leafKeyForMax] = parseInt(prefixMatch[3]);
+      }
     }
     if(!structure[parent]) structure[parent] = [];
     structure[parent].push(label);
@@ -899,7 +907,7 @@ function parseLQImportText(raw) {
     gradingMode[leafKey] = gm;
     order.push(leafKey);
   });
-  return { structure, answerKey, gradingMode, order };
+  return { structure, answerKey, gradingMode, leafMaxMarks, order };
 }
 
 function previewLQImport() {
@@ -919,8 +927,10 @@ function previewLQImport() {
     const display = gm === 'table' ? lqRenderFilledTableHtml(parsed.answerKey[leafKey], spec.values.join('|||'))
       : spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) + ' <span style="color:var(--muted);font-weight:600;font-size:11px">(' + spec.values.length + ' blanks)</span>'
       : parsed.answerKey[leafKey];
-    const tag = gm === 'manual' ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(manual)</span>'
-      : gm === 'sketch' ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(sketch — manual judge)</span>'
+    const maxM = parsed.leafMaxMarks[leafKey];
+    const maxTag = maxM ? ', max ' + maxM + ' marks' : '';
+    const tag = gm === 'manual' ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(manual'+maxTag+')</span>'
+      : gm === 'sketch' ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(sketch — manual judge'+maxTag+')</span>'
       : gm === 'table' ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(table)</span>'
       : mcqMatch ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(MCQ, options A–'+optionLetter(parseInt(mcqMatch[1]))+')</span>' : '';
     return '<div class="qrow correct"><span>' + leafKey + tag + '</span><span><strong>' + display + '</strong></span></div>';
@@ -935,6 +945,7 @@ function applyLQImport() {
   lqStructure = pendingLQImport.structure;
   lqAnswerKey = pendingLQImport.answerKey;
   lqGradingMode = pendingLQImport.gradingMode;
+  lqMaxMarks = pendingLQImport.leafMaxMarks || {};
   pendingLQImport = null;
   document.getElementById('lqImportPreviewContainer').innerHTML = '<div class="confirm-ready" style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600">✅ Applied. Double check the questions below, then click "💾 Save Set".</div>';
   document.getElementById('lqImportText').value = '';
@@ -1159,7 +1170,7 @@ function saveSet() {
     payload = {
       title, paperType, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null,
       totalQuestions: parents.length,
-      structure: lqStructure, answerKey: lqAnswerKey, gradingMode: lqGradingMode,
+      structure: lqStructure, answerKey: lqAnswerKey, gradingMode: lqGradingMode, leafMaxMarks: lqMaxMarks,
       gradeBoundaries: currentGradeBoundaries, isTutorial,
       createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now()
     };
@@ -1217,7 +1228,7 @@ function cancelEdit() {
   document.getElementById('gradeBoundaryText').value = '';
   document.getElementById('gradeBoundaryPreviewContainer').innerHTML = '';
   renderCurrentGradeBoundariesTable();
-  lqStructure = {}; lqAnswerKey = {}; lqGradingMode = {}; pendingLQImport = null;
+  lqStructure = {}; lqAnswerKey = {}; lqGradingMode = {}; lqMaxMarks = {}; pendingLQImport = null;
   document.getElementById('lqImportText').value = '';
   document.getElementById('lqImportPreviewContainer').innerHTML = '';
   document.getElementById('mcqCreateSections').classList.remove('hidden');
@@ -1253,6 +1264,7 @@ async function editSet(setId) {
     lqStructure = JSON.parse(JSON.stringify(s.structure || {}));
     lqAnswerKey = Object.assign({}, s.answerKey || {});
     lqGradingMode = Object.assign({}, s.gradingMode || {});
+    lqMaxMarks = Object.assign({}, s.leafMaxMarks || {});
     pendingLQImport = null;
     document.getElementById('lqImportText').value = '';
     document.getElementById('lqImportPreviewContainer').innerHTML = '';
@@ -1524,12 +1536,24 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
     leaves.forEach(leafKey => {
       const isManual = isManualLikeGrading((set.gradingMode || {})[leafKey]);
       if(isManual && excludeManual) return; // not counted at all for overtime
-      total++;
       if(isManual) {
-        if(manualMarks[leafKey] === true) score++;
-        else if(manualMarks[leafKey] !== false) pending++;
-      } else if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) {
-        score++;
+        // manualMarks[leafKey] is either the legacy boolean (full/zero
+        // credit) or {marks, feedback} for partial credit — see
+        // isManualLikeGrading's comment. Max marks for the leaf defaults to
+        // 1 when the paper didn't specify one via [manual:N]/[sketch:N].
+        const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+        const mark = manualMarks[leafKey];
+        total += maxM;
+        if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
+          score += Math.max(0, Math.min(mark.marks, maxM));
+        } else if(mark === true) {
+          score += maxM;
+        } else if(mark !== false) {
+          pending++;
+        }
+      } else {
+        total++;
+        if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score++;
       }
     });
     return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0, pending };
@@ -1772,7 +1796,7 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
   // Only the timed attempt goes through your marking workflow.
   const isOvertime = attemptMode === 'overtime';
   const parents = Object.keys(set.structure || {}).map(Number).sort((a,b)=>a-b);
-  let correct = 0, incorrect = 0, notAttempted = 0, pending = 0, total = 0;
+  let correct = 0, incorrect = 0, notAttempted = 0, pending = 0, partial = 0, total = 0;
   let rows = '';
   parents.forEach(parent => {
     const leaves = (set.structure[parent].length ? set.structure[parent] : ['']);
@@ -1813,10 +1837,22 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
           notAttempted++; cls='notattempted'; verdict='— Not attempted';
         } else if(isManual) {
           const mark = manualMarks[leafKey];
-          markControl = '<label style="font-size:11px;font-weight:700;margin-left:8px"><input type="checkbox" class="lq-mark-cb" data-leaf="'+leafKey+'" '+(mark===true?'checked':'')+'> correct</label>';
-          if(mark === true) { correct++; cls='correct'; verdict='✓ Marked correct'; }
-          else if(mark === false) { incorrect++; cls='incorrect'; verdict='✗ Marked incorrect'; }
-          else { pending++; cls='notattempted'; verdict='⏳ Pending your marking'; }
+          const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+          if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
+            // Written directly by WPC Operator (or anyone) via the database —
+            // no checkbox for this, just a read-only display of the marks
+            // and feedback text, which also shows in the student's results.
+            const feedbackHtml = mark.feedback ? '<div style="margin-top:2px;color:var(--muted);font-size:11px">'+escapeHtml(mark.feedback)+'</div>' : '';
+            if(mark.marks >= maxM) { correct++; cls='correct'; }
+            else if(mark.marks <= 0) { incorrect++; cls='incorrect'; }
+            else { partial++; cls='notattempted'; }
+            verdict = mark.marks + ' / ' + maxM + ' marks' + feedbackHtml;
+          } else {
+            markControl = '<label style="font-size:11px;font-weight:700;margin-left:8px"><input type="checkbox" class="lq-mark-cb" data-leaf="'+leafKey+'" '+(mark===true?'checked':'')+'> correct</label>';
+            if(mark === true) { correct++; cls='correct'; verdict='✓ Marked correct'; }
+            else if(mark === false) { incorrect++; cls='incorrect'; verdict='✗ Marked incorrect'; }
+            else { pending++; cls='notattempted'; verdict='⏳ Pending your marking'; }
+          }
         } else if(lqLeafIsCorrect(given, modelAnswer)) {
           correct++; cls='correct'; verdict='✓ Correct';
         } else {
@@ -1830,7 +1866,8 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
   const grade = computeGrade(correct, set.gradeBoundaries);
   const gradeText = grade !== null ? ' <span style="color:var(--brand);font-weight:800">— Grade: '+grade+'</span>' : '';
   const pendingText = pending > 0 ? ' <span style="color:var(--gold);font-weight:800">('+pending+' pending marking)</span>' : '';
-  let header = '<h3 style="font-size:14px;margin:14px 0 8px;color:var(--brand)">'+label+' — '+correct+' / '+total+' correct <span style="color:var(--muted);font-weight:600;font-size:12px">('+incorrect+' wrong, '+notAttempted+' not attempted)</span>'+pendingText+gradeText+'</h3>';
+  const partialText = partial > 0 ? ', '+partial+' partial' : '';
+  let header = '<h3 style="font-size:14px;margin:14px 0 8px;color:var(--brand)">'+label+' — '+correct+' / '+total+' correct <span style="color:var(--muted);font-weight:600;font-size:12px">('+incorrect+' wrong'+partialText+', '+notAttempted+' not attempted)</span>'+pendingText+gradeText+'</h3>';
   let footer = '';
   if(set.isTutorial) {
     footer = '<div style="margin-top:8px;font-size:12px;font-weight:700;color:var(--muted)">🎓 Tutorial paper — self-check, always visible to the student immediately. No marking or release needed.</div>';

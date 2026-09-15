@@ -450,7 +450,7 @@ async function loginStudent() {
 function normalizeLQFields(sets) {
   Object.values(sets || {}).forEach(s => {
     if(s && isLQPaperType(s.paperType)) {
-      ['structure','answerKey','gradingMode'].forEach(field => {
+      ['structure','answerKey','gradingMode','leafMaxMarks'].forEach(field => {
         if(s[field] && typeof s[field] === 'object') {
           const clean = {};
           Object.keys(s[field]).forEach(k => { if(s[field][k] != null) clean[k] = s[field][k]; });
@@ -1678,12 +1678,23 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
     leaves.forEach(leafKey => {
       const isManual = isManualLikeGrading((set.gradingMode || {})[leafKey]);
       if(isManual && excludeManual) return;
-      total++;
       if(isManual) {
-        if(manualMarks[leafKey] === true) score++;
-        else if(manualMarks[leafKey] !== false) pending++;
-      } else if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) {
-        score++;
+        // manualMarks[leafKey] is either the legacy boolean (full/zero
+        // credit) or {marks, feedback} for partial credit. Max marks for
+        // the leaf defaults to 1 when the paper didn't specify one.
+        const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+        const mark = manualMarks[leafKey];
+        total += maxM;
+        if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
+          score += Math.max(0, Math.min(mark.marks, maxM));
+        } else if(mark === true) {
+          score += maxM;
+        } else if(mark !== false) {
+          pending++;
+        }
+      } else {
+        total++;
+        if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score++;
       }
     });
     return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0, pending };
@@ -1742,7 +1753,13 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
           extra = '<div class="correct-ans">Model answer: ' + modelAnswer + '</div>';
         } else if(isManual) {
           const mark = manualMarks[leafKey];
-          if(mark === true) { cls='correct'; verdictText='✓ Marked correct'; }
+          const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+          if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
+            cls = mark.marks >= maxM ? 'correct' : mark.marks > 0 ? 'review' : 'incorrect';
+            verdictText = mark.marks + ' / ' + maxM + ' marks';
+            if(mark.feedback) extra = '<div class="correct-ans">' + escapeHtml(mark.feedback) + '</div>';
+          }
+          else if(mark === true) { cls='correct'; verdictText='✓ Marked correct'; }
           else if(mark === false) { cls='incorrect'; verdictText='✗ Marked incorrect'; }
           else { cls='review'; verdictText='⏳ Pending marking'; }
         } else {
