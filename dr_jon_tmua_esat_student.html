@@ -1087,9 +1087,15 @@ function renderCurrentQuestion() {
 
   document.getElementById('paperLinkBtn').classList.toggle('hidden', !currentSet.paperUrl);
 
-  document.getElementById('prevBtn').disabled = (q === 1);
+  // Use the 0-based position (currentQIndex), not q — for LQ papers q is
+  // the actual parent question number (e.g. 3, 4, 5 if the paper's parents
+  // aren't numbered 1..N), which is a completely different thing from
+  // "which screen is this". Comparing q to total broke as soon as a parent
+  // number happened to equal the question count (e.g. parents [3,4,5] on a
+  // 3-question paper put "Review & Submit" on the very first screen).
+  document.getElementById('prevBtn').disabled = (currentQIndex === 0);
   const nextBtn = document.getElementById('nextBtn');
-  nextBtn.textContent = (q === total) ? 'Review & Submit ✓' : 'Next →';
+  nextBtn.textContent = (currentQIndex === total - 1) ? 'Review & Submit ✓' : 'Next →';
 
   const chromeEl = document.querySelector('.exam-chrome');
   if(chromeEl) window.scrollTo({top: 0, behavior: 'instant'});
