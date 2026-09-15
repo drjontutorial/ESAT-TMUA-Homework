@@ -367,6 +367,12 @@ let lqAnswerKey = {};
 let lqGradingMode = {}; // leafKey -> 'auto' | 'manual'
 let pendingLQImport = null;
 
+// Paper types that use the LQ structure/leaf engine (parent/sub-part
+// questions, templated blanks, manual/mcq gradingMode) rather than the flat
+// MCQ answerKey. wpc_physics reuses the exact same engine as lq_16plus —
+// it's a separate category for organizing papers, not a different renderer.
+function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics'; }
+
 function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
 
 // Display-only formatting: turns "x^2" / "x^-1" into real superscript
@@ -413,7 +419,7 @@ function adminLogout() {
 // after every fetch so nothing downstream has to know about it.
 function normalizeLQFields(sets) {
   Object.values(sets || {}).forEach(s => {
-    if(s && s.paperType === 'lq_16plus') {
+    if(s && isLQPaperType(s.paperType)) {
       ['structure','answerKey','gradingMode'].forEach(field => {
         if(s[field] && typeof s[field] === 'object') {
           const clean = {};
@@ -522,7 +528,7 @@ async function renderHomepage() {
           // Long Questions papers with any manual-marked part still pending
           // your review — surfaced here so a completed paper never sits
           // unnoticed. MCQ/SAT/etc papers are auto-graded and never appear.
-          if(set && set.paperType === 'lq_16plus' && !set.isTutorial && !sub.resultsReleased) {
+          if(set && isLQPaperType(set.paperType) && !set.isTutorial && !sub.resultsReleased) {
             const live = computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks);
             needsReview.push({ ts: sub.timedSubmittedAt, code, setId, set, pending: live.pending });
           }
@@ -632,7 +638,7 @@ function suggestNextTitle(paperType) {
 
 function updateQuestionCountFromPaperType() {
   const paperType = document.getElementById('setPaperType').value;
-  const isLQ = paperType === 'lq_16plus';
+  const isLQ = isLQPaperType(paperType);
 
   if(!editingSetId && titleWasAutoFilled) {
     const suggestion = suggestNextTitle(paperType);
@@ -1079,7 +1085,7 @@ function saveSet() {
   const {ref,set,push,db} = window.firebaseDB;
   let payload;
 
-  if(paperType === 'lq_16plus') {
+  if(isLQPaperType(paperType)) {
     const parents = Object.keys(lqStructure).map(Number).sort((a,b) => a-b);
     if(parents.length === 0) { alert('Please add at least one question'); return; }
     let missing = [];
@@ -1179,7 +1185,7 @@ async function editSet(setId) {
   document.getElementById('gradeBoundaryPreviewContainer').innerHTML = '';
   renderCurrentGradeBoundariesTable();
 
-  const isLQ = s.paperType === 'lq_16plus';
+  const isLQ = isLQPaperType(s.paperType);
   document.getElementById('mcqCreateSections').classList.toggle('hidden', isLQ);
   document.getElementById('lqCreateSection').classList.toggle('hidden', !isLQ);
   document.getElementById('setOptionsCountGroup').classList.toggle('hidden', isLQ);
@@ -1421,7 +1427,7 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
   answers = answers || {};
   manualMarks = manualMarks || {};
 
-  if(set.paperType === 'lq_16plus') {
+  if(isLQPaperType(set.paperType)) {
     const leaves = lqAllLeafKeys(set);
     let score = 0, pending = 0, total = 0;
     leaves.forEach(leafKey => {
@@ -1632,7 +1638,7 @@ function showBreakdownFor(setId, code) {
     html += '<div class="edit-warning" style="background:var(--gold-bg,#fef3c7);border-color:#fbbf24;color:#92400e">🚩 <strong>Flagged for review:</strong> Q' + flagged.join(', Q') + ' — ' + name + ' wants to go over ' + (flagged.length===1?'this question':'these questions') + ' with you in a lesson.</div>';
   }
 
-  const isLQ = set.paperType === 'lq_16plus';
+  const isLQ = isLQPaperType(set.paperType);
   if(isLQ) {
     html += buildLQBreakdownSection('Timed Attempt', s.timedAnswers, set, s.manualMarks, flagged, setId, code, 'timed', s.resultsReleased);
     if(s.overtimeSubmittedAt) {

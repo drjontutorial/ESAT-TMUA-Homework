@@ -449,7 +449,7 @@ async function loginStudent() {
 // after every fetch so nothing downstream has to know about it.
 function normalizeLQFields(sets) {
   Object.values(sets || {}).forEach(s => {
-    if(s && s.paperType === 'lq_16plus') {
+    if(s && isLQPaperType(s.paperType)) {
       ['structure','answerKey','gradingMode'].forEach(field => {
         if(s[field] && typeof s[field] === 'object') {
           const clean = {};
@@ -938,7 +938,7 @@ function setupExam(mode) {
     currentQIndex = 0;
   } else if(mode === 'resume') {
     currentQIndex = 0;
-    const isLQ = currentSet.paperType === 'lq_16plus';
+    const isLQ = isLQPaperType(currentSet.paperType);
     const parents = isLQ ? lqParentNumbers(currentSet) : null;
     for(let pos=0; pos<currentSet.totalQuestions; pos++) {
       const answered = isLQ ? isLQParentAnswered(parents[pos]) : !!currentAnswers[pos+1];
@@ -958,7 +958,7 @@ function lqParentNumbers(set) {
 
 function renderCurrentQuestion() {
   const total = currentSet.totalQuestions;
-  const isLQ = currentSet.paperType === 'lq_16plus';
+  const isLQ = isLQPaperType(currentSet.paperType);
   const q = isLQ ? lqParentNumbers(currentSet)[currentQIndex] : (currentQIndex + 1);
 
   document.getElementById('examTitle').textContent = currentSet.title;
@@ -1058,7 +1058,7 @@ function renderCurrentQuestion() {
 }
 
 function toggleFlag() {
-  const q = currentSet.paperType === 'lq_16plus' ? lqParentNumbers(currentSet)[currentQIndex] : (currentQIndex + 1);
+  const q = isLQPaperType(currentSet.paperType) ? lqParentNumbers(currentSet)[currentQIndex] : (currentQIndex + 1);
   if(flaggedQuestions.has(q)) flaggedQuestions.delete(q); else flaggedQuestions.add(q);
   renderCurrentQuestion();
   saveFlags();
@@ -1131,7 +1131,7 @@ function isLQParentAnswered(q) {
 
 function openNavigator() {
   const total = currentSet.totalQuestions;
-  const isLQ = currentSet.paperType === 'lq_16plus';
+  const isLQ = isLQPaperType(currentSet.paperType);
   const parents = isLQ ? lqParentNumbers(currentSet) : null;
   let html = '';
   let answeredCount = 0;
@@ -1188,6 +1188,12 @@ function commitGridAnswer(value) {
 // 16+ Long Questions: same in-memory-then-commit pattern as grid-in, but
 // keyed by leaf (e.g. "5bi") instead of by parent question number, since one
 // screen can hold several separate sub-part answer boxes.
+// Paper types that use the LQ structure/leaf engine (parent/sub-part
+// questions, templated blanks, manual/mcq gradingMode) rather than the flat
+// MCQ answerKey. wpc_physics reuses the exact same engine as lq_16plus —
+// it's a separate category for organizing papers, not a different renderer.
+function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics'; }
+
 function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
 
 // Display-only formatting: turns "x^2" / "x^-1" into real superscript
@@ -1342,7 +1348,7 @@ async function finalizeTimed(finalizedAt) {
 // ---- Submit confirmation step ----
 function openSubmitConfirm() {
   const total = currentSet.totalQuestions;
-  const isLQ = currentSet.paperType === 'lq_16plus';
+  const isLQ = isLQPaperType(currentSet.paperType);
   const questionNumbers = isLQ ? lqParentNumbers(currentSet) : Array.from({length: total}, (_, i) => i+1);
   const unanswered = [];
   questionNumbers.forEach(q => {
@@ -1431,7 +1437,7 @@ function showResults(sub, showOvertimeToo) {
   // the score/model-answers immediately would defeat having a human review
   // written work. Overtime/reattempt stay self-check (unaffected below),
   // since those are practice only, separate from the official timed result.
-  const isLQ = liveSet.paperType === 'lq_16plus';
+  const isLQ = isLQPaperType(liveSet.paperType);
   // The onboarding tutorial paper is self-check, always shown immediately —
   // it's a walkthrough, not a real assessment awaiting Dr Jon's review.
   const released = !!sub.resultsReleased || !!liveSet.isTutorial;
@@ -1536,7 +1542,7 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
   answers = answers || {};
   manualMarks = manualMarks || {};
 
-  if(set.paperType === 'lq_16plus') {
+  if(isLQPaperType(set.paperType)) {
     const leaves = lqAllLeafKeys(set);
     let score = 0, pending = 0, total = 0;
     leaves.forEach(leafKey => {
@@ -1576,7 +1582,7 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
   answers = answers || {};
   manualMarks = manualMarks || {};
 
-  if(set.paperType === 'lq_16plus') {
+  if(isLQPaperType(set.paperType)) {
     let html = '';
     Object.keys(set.structure || {}).map(Number).sort((a,b)=>a-b).forEach(parent => {
       const leaves = (set.structure[parent].length ? set.structure[parent] : ['']);
