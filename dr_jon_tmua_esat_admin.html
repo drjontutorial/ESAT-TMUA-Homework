@@ -305,7 +305,7 @@ tbody tr:hover{background:#f8fafc}
         <div id="lqCreateSection" class="hidden">
           <div style="background:#fdf4ff;border:1.5px solid #e9d5ff;border-radius:12px;padding:14px;margin-bottom:14px">
             <div style="font-weight:800;font-size:13px;color:#6b21a8;margin-bottom:6px">📥 Import Long Questions (recommended)</div>
-            <p style="font-size:12px;color:#6b21a8;margin-bottom:10px">Get another Claude chat to generate model answers, then paste its reply below — one line per question or sub-part, as <code>label: answer</code>. Sub-parts share a question number, e.g. <code>5a</code>, <code>5bi</code>, <code>5bii</code>. Prefix with <code>[manual]</code> for anything needing your judgement instead of an exact match. Prefix with <code>[mcq]</code> (or <code>[mcq6]</code> for 6 options) to show clickable A–D style buttons instead of a typed answer — the answer itself is just the correct letter, e.g. <code>1: [mcq] B</code>.</p>
+            <p style="font-size:12px;color:#6b21a8;margin-bottom:10px">Get another Claude chat to generate model answers, then paste its reply below — one line per question or sub-part, as <code>label: answer</code>. Sub-parts share a question number, e.g. <code>5a</code>, <code>5bi</code>, <code>5bii</code>. Prefix with <code>[manual]</code> for anything needing your judgement instead of an exact match. Prefix with <code>[mcq]</code> (or <code>[mcq6]</code> for 6 options) to show clickable A–D style buttons instead of a typed answer — the answer itself is just the correct letter, e.g. <code>1: [mcq] B</code>. Prefix with <code>[sketch]</code> for a question needing a hand-drawn diagram — the student gets a small drawing canvas instead of a text box, and you judge it by eye like <code>[manual]</code> (whatever follows is just a note to yourself, e.g. <code>3ai: [sketch] two 50Ω resistors in parallel</code>). Prefix with <code>[table]</code> for a fill-in-the-blanks table — write the template as rows separated by <code>;</code> and cells separated by <code>|</code>, with <code>___</code>/<code>~~~</code> for the blank cells, e.g. <code>4: [table] Point|A|B|C; PD (V)|___|___|~~~ => 3, 6, 2x</code>.</p>
             <button class="btn btn-ghost" onclick="copyLQClaudePrompt()">🤖 Copy Prompt for Claude</button>
             <textarea id="lqImportText" placeholder="1: 42&#10;2: 3/4&#10;5a: x = 3&#10;5bi: [manual] Explain why the gradient is negative...&#10;5bii: 12" style="width:100%;min-height:120px;margin-top:10px;padding:10px;border:1.5px solid var(--line);border-radius:10px;font-family:monospace;font-size:13px"></textarea>
             <button class="btn btn-primary" style="margin-top:10px" onclick="previewLQImport()">👀 Preview Import</button>
@@ -372,6 +372,11 @@ let pendingLQImport = null;
 // MCQ answerKey. wpc_physics reuses the exact same engine as lq_16plus —
 // it's a separate category for organizing papers, not a different renderer.
 function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics'; }
+
+// [sketch] leaves need a human to judge them exactly like [manual] does
+// (they're scored via manualMarks, not auto-matched) — only the input
+// widget differs (canvas vs textarea), so scoring treats them identically.
+function isManualLikeGrading(gm) { return gm === 'manual' || gm === 'sketch'; }
 
 function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
 
@@ -494,6 +499,47 @@ function renderBackupReminder() {
 
 let homepageRenderToken = 0;
 
+const SKETCH_RETENTION_MS = 5 * 24 * 60 * 60 * 1000; // 5 days after release
+
+// Dr Jon is on Firebase's free (Spark) tier and doesn't want sketch images
+// sitting in the DB indefinitely. Rather than a scheduled job (no server to
+// run one on), this piggybacks on the admin homepage load he already does
+// regularly: for any released LQ/WPC submission whose sketch leaves are
+// past the retention window, replace the image data with a short marker
+// string recording that it was answered and how it was marked — never a
+// silent delete, and never touches anything not yet released or not yet
+// past the window.
+async function sweepOldSketches(allSubsTree) {
+  if(!window.firebaseDB) return;
+  const now = Date.now();
+  const writes = {};
+  Object.entries(allSubsTree).forEach(([setId, subsForSet]) => {
+    const set = homeworkSets[setId];
+    if(!set || !isLQPaperType(set.paperType)) return;
+    const sketchLeaves = Object.keys(set.gradingMode || {}).filter(k => set.gradingMode[k] === 'sketch');
+    if(sketchLeaves.length === 0) return;
+    Object.entries(subsForSet || {}).forEach(([code, sub]) => {
+      if(!sub.resultsReleased || !sub.resultsReleasedAt) return;
+      if(now - sub.resultsReleasedAt < SKETCH_RETENTION_MS) return;
+      ['timedAnswers','overtimeAnswers','draftAnswers','overtimeDraftAnswers'].forEach(field => {
+        const bag = sub[field];
+        if(!bag) return;
+        sketchLeaves.forEach(leafKey => {
+          const val = bag[leafKey];
+          if(typeof val === 'string' && val.startsWith('data:image')) {
+            const mark = sub.manualMarks && sub.manualMarks[leafKey];
+            const marker = '[sketch — marked ' + (mark===true?'✓':mark===false?'✗':'unmarked') + ', image removed after 5 days]';
+            writes['submissions/'+setId+'/'+code+'/'+field+'/'+leafKey] = marker;
+          }
+        });
+      });
+    });
+  });
+  if(Object.keys(writes).length === 0) return;
+  const {ref,update,db} = window.firebaseDB;
+  try { await update(ref(db), writes); } catch(e) { /* try again next homepage load */ }
+}
+
 async function renderHomepage() {
   const myToken = ++homepageRenderToken;
   const totalStudents = Object.keys(students).length;
@@ -518,6 +564,7 @@ async function renderHomepage() {
     const snap = await get(ref(db,'submissions'));
     if(myToken !== homepageRenderToken) return; // a newer render started — drop this stale result
     const allSubsTree = snap.val() || {};
+    sweepOldSketches(allSubsTree); // fire-and-forget — see function comment
     const events = [];
     const needsReview = [];
     Object.entries(allSubsTree).forEach(([setId, subsForSet]) => {
@@ -834,16 +881,22 @@ function parseLQImportText(raw) {
     const parent = parseInt(m[1]);
     const label = m[2].trim();
     let answer = m[3].trim();
-    let manual = false;
-    let mcqMode = null;
-    if(/^\[manual\]/i.test(answer)) { manual = true; answer = answer.replace(/^\[manual\]\s*/i, ''); }
-    const mcqPrefix = answer.match(/^\[mcq(\d*)\]\s*/i);
-    if(mcqPrefix) { mcqMode = 'mcq' + (mcqPrefix[1] || '4'); answer = answer.replace(/^\[mcq(\d*)\]\s*/i, ''); }
+    // Exactly one of these prefixes may lead the answer text — whichever
+    // matches first wins. [manual]/[sketch] both need a human to judge them
+    // (sketch just shows an image instead of text); [table]/plain blanks and
+    // [mcqN] are auto-graded the normal way.
+    let gm = 'auto';
+    const prefixMatch = answer.match(/^\[(manual|sketch|table|mcq(\d*))\]\s*/i);
+    if(prefixMatch) {
+      const kind = prefixMatch[1].toLowerCase();
+      answer = answer.slice(prefixMatch[0].length).trim();
+      gm = kind.startsWith('mcq') ? 'mcq' + (prefixMatch[2] || '4') : kind;
+    }
     if(!structure[parent]) structure[parent] = [];
     structure[parent].push(label);
     const leafKey = lqLeafKey(parent, label);
     answerKey[leafKey] = answer;
-    gradingMode[leafKey] = manual ? 'manual' : (mcqMode || 'auto');
+    gradingMode[leafKey] = gm;
     order.push(leafKey);
   });
   return { structure, answerKey, gradingMode, order };
@@ -860,11 +913,16 @@ function previewLQImport() {
   }
   pendingLQImport = parsed;
   let rows = parsed.order.map(leafKey => {
-    const manual = parsed.gradingMode[leafKey] === 'manual';
-    const mcqMatch = String(parsed.gradingMode[leafKey]||'').match(/^mcq(\d+)$/);
+    const gm = parsed.gradingMode[leafKey];
+    const mcqMatch = String(gm||'').match(/^mcq(\d+)$/);
     const spec = parseLQAnswerSpec(parsed.answerKey[leafKey]);
-    const display = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) + ' <span style="color:var(--muted);font-weight:600;font-size:11px">(' + spec.values.length + ' blanks)</span>' : parsed.answerKey[leafKey];
-    const tag = manual ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(manual)</span>' : mcqMatch ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(MCQ, options A–'+optionLetter(parseInt(mcqMatch[1]))+')</span>' : '';
+    const display = gm === 'table' ? lqRenderFilledTableHtml(parsed.answerKey[leafKey], spec.values.join('|||'))
+      : spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) + ' <span style="color:var(--muted);font-weight:600;font-size:11px">(' + spec.values.length + ' blanks)</span>'
+      : parsed.answerKey[leafKey];
+    const tag = gm === 'manual' ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(manual)</span>'
+      : gm === 'sketch' ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(sketch — manual judge)</span>'
+      : gm === 'table' ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(table)</span>'
+      : mcqMatch ? ' <span style="color:var(--muted);font-weight:600;font-size:11px">(MCQ, options A–'+optionLetter(parseInt(mcqMatch[1]))+')</span>' : '';
     return '<div class="qrow correct"><span>' + leafKey + tag + '</span><span><strong>' + display + '</strong></span></div>';
   }).join('');
   let html = '<div style="max-height:280px;overflow-y:auto;margin:10px 0;background:#fff;border-radius:10px;padding:6px">' + rows + '</div>';
@@ -1406,6 +1464,39 @@ function lqRenderFilledTemplate(template, given) {
   return formatMathText(filled);
 }
 
+// [table] leaves store their template exactly like any other — rows
+// separated by ";", cells by "|" — purely a layout convention for the
+// renderer. Blank order (left-to-right, top-to-bottom through the raw
+// string) still lines up with spec.values, so parseLQAnswerSpec and
+// lqLeafIsCorrect need no changes at all for tables.
+function lqParseTableRows(template) {
+  return String(template || '').split(';').map(row => row.split('|').map(c => c.trim()));
+}
+
+// Read-only filled table (breakdown/marking view) — same blank-filling idea
+// as lqRenderFilledTemplate, laid out as a real <table> instead of inline text.
+function lqRenderFilledTableHtml(template, given) {
+  const rows = lqParseTableRows(template);
+  const parts = String(given || '').split('|||');
+  let i = 0;
+  let html = '<table style="border-collapse:collapse;margin:6px 0"><tbody>';
+  rows.forEach(cells => {
+    html += '<tr>';
+    cells.forEach(cell => {
+      if(cell === '___' || cell === '~~~') {
+        const v = parts[i] !== undefined && parts[i] !== '' ? escapeHtml(parts[i]) : '—';
+        i++;
+        html += '<td style="border:1px solid var(--line);padding:5px 9px;text-align:center">'+v+'</td>';
+      } else {
+        html += '<td style="border:1px solid var(--line);padding:5px 9px;font-weight:700;text-align:center;background:#f8fafc">'+formatMathText(escapeHtml(cell))+'</td>';
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
 // Every leaf key for a 16+ Long Questions paper — a leaf is a sub-part
 // (e.g. "5bi") if the parent question has sub-parts, or just the parent
 // number itself (e.g. "1") if it doesn't.
@@ -1431,7 +1522,7 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
     const leaves = lqAllLeafKeys(set);
     let score = 0, pending = 0, total = 0;
     leaves.forEach(leafKey => {
-      const isManual = (set.gradingMode || {})[leafKey] === 'manual';
+      const isManual = isManualLikeGrading((set.gradingMode || {})[leafKey]);
       if(isManual && excludeManual) return; // not counted at all for overtime
       total++;
       if(isManual) {
@@ -1691,13 +1782,25 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
       const leafKey = lqLeafKey(parent, label2);
       const given = answers[leafKey];
       const modelAnswer = (set.answerKey||{})[leafKey] || '';
-      const isManual = (set.gradingMode||{})[leafKey] === 'manual';
+      const gradingModeVal = (set.gradingMode||{})[leafKey] || '';
+      const isManual = isManualLikeGrading(gradingModeVal);
+      const isSketch = gradingModeVal === 'sketch';
+      const isTable = gradingModeVal === 'table';
       const spec = parseLQAnswerSpec(modelAnswer);
-      const displayLabel = spec.template ? (label2?'('+label2+') ':'') + formatMathText(spec.template) : (label2 ? ('('+label2+')') : '');
-      const givenDisplay = spec.template ? (given ? lqRenderFilledTemplate(spec.template, given) : '—') : (given ? escapeHtml(given) : '—');
+      const displayLabel = isTable ? (label2?'('+label2+') ':'') + 'table'
+        : isSketch ? (label2?'('+label2+') ':'') + 'sketch'
+        : spec.template ? (label2?'('+label2+') ':'') + formatMathText(spec.template)
+        : (label2 ? ('('+label2+')') : '');
+      const givenDisplay = isSketch
+        ? (given && given.startsWith('data:image') ? '<img src="'+given+'" style="max-width:220px;display:block;margin-top:4px;border:1px solid var(--line);border-radius:6px">' : (given ? escapeHtml(given) : '—'))
+        : isTable ? (given ? lqRenderFilledTableHtml(modelAnswer, given) : '—')
+        : spec.template ? (given ? lqRenderFilledTemplate(spec.template, given) : '—')
+        : (given ? escapeHtml(given) : '—');
       // Human-readable model answer, whether templated or plain — never the
       // raw "template => values" storage string.
-      const modelAnswerDisplay = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : formatMathText(String(modelAnswer||'').split('|').join(' or '));
+      const modelAnswerDisplay = isTable ? lqRenderFilledTableHtml(modelAnswer, spec.values.join('|||'))
+        : spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||'))
+        : formatMathText(String(modelAnswer||'').split('|').join(' or '));
       let cls, verdict, markControl = '';
 
       if(isManual && isOvertime) {

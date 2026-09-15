@@ -969,15 +969,52 @@ function renderCurrentQuestion() {
   if(isLQ) {
     const leaves = (currentSet.structure && currentSet.structure[q] && currentSet.structure[q].length) ? currentSet.structure[q] : [''];
     let html = '';
+    const pendingSketchInits = [];
     leaves.forEach(label => {
       const leafKey = lqLeafKey(q, label);
       const rowLabel = label ? ('('+label+')') : ('Q'+q);
-      const spec = parseLQAnswerSpec((currentSet.answerKey || {})[leafKey]);
+      const rawAnswer = (currentSet.answerKey || {})[leafKey];
+      const spec = parseLQAnswerSpec(rawAnswer);
       const gradingModeVal = String((currentSet.gradingMode || {})[leafKey] || '');
       const isManual = gradingModeVal === 'manual';
       const mcqMatch = gradingModeVal.match(/^mcq(\d+)$/);
 
-      if(mcqMatch) {
+      if(gradingModeVal === 'table') {
+        // Same blank machinery as a normal template, just laid out as a real
+        // <table> — rows split on ";", cells on "|" (see lqParseTableRows).
+        const rows = lqParseTableRows(spec.template || rawAnswer);
+        const givenParts = (currentAnswers[leafKey] || '').split('|||');
+        let blankIndex = 0;
+        let tableHtml = '<table style="width:100%;border-collapse:collapse;margin:4px 0"><tbody>';
+        rows.forEach(cells => {
+          tableHtml += '<tr>';
+          cells.forEach(cell => {
+            if(cell === '___' || cell === '~~~') {
+              const inputType = cell === '~~~' ? 'text' : 'number';
+              const numAttrs = cell === '___' ? ' inputmode="decimal" step="any"' : '';
+              const val = (givenParts[blankIndex] || '').replace(/"/g, '&quot;');
+              tableHtml += '<td style="border:1.5px solid var(--line);padding:6px;text-align:center"><input type="'+inputType+'"'+numAttrs+' value="'+val+'" oninput="setLQBlankAnswer(\''+leafKey+'\','+blankIndex+',this.value)" onblur="commitLQBlankAnswer(\''+leafKey+'\','+blankIndex+',this.value)" style="width:60px;padding:6px;border:1.5px solid var(--line);border-radius:6px;font-size:14px;font-weight:700;text-align:center;font-family:\'DM Sans\',sans-serif"></td>';
+              blankIndex++;
+            } else {
+              tableHtml += '<td style="border:1.5px solid var(--line);padding:6px;font-weight:700;text-align:center;background:#f8fafc">'+formatMathText(escapeHtml(cell))+'</td>';
+            }
+          });
+          tableHtml += '</tr>';
+        });
+        tableHtml += '</tbody></table>';
+        html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:8px;color:var(--brand)">'+rowLabel+'</label>'+tableHtml+'</div>';
+      } else if(gradingModeVal === 'sketch') {
+        // Small drawing canvas for diagram questions — judged by eye like
+        // [manual]. Canvas is wired up (draw handlers, existing image
+        // restored) after this whole block's innerHTML is actually in the
+        // DOM — see pendingSketchInits below.
+        const canvasId = 'lqsketch_'+leafKey;
+        html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:8px;color:var(--brand)">'+rowLabel+'</label>'
+          + '<canvas id="'+canvasId+'" width="320" height="220" style="border:1.5px solid var(--line);border-radius:8px;background:#fff;touch-action:none;display:block;max-width:100%;cursor:crosshair"></canvas>'
+          + '<div style="margin-top:8px"><button type="button" onclick="clearLQSketch(\''+leafKey+'\')" style="padding:8px 14px;font-size:12px;font-weight:800;border:1.5px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-family:\'DM Sans\',sans-serif">🗑️ Clear</button> <span style="font-size:11px;color:var(--muted)">Draw with mouse or finger</span></div>'
+          + '</div>';
+        pendingSketchInits.push({ leafKey, canvasId, existing: currentAnswers[leafKey] || '' });
+      } else if(mcqMatch) {
         // Real clickable A/B/C/D-style options, like the MCQ papers — the
         // student picks a letter rather than typing anything.
         const count = parseInt(mcqMatch[1]);
@@ -1027,6 +1064,7 @@ function renderCurrentQuestion() {
       }
     });
     document.getElementById('examOptions').innerHTML = html;
+    pendingSketchInits.forEach(({leafKey, canvasId, existing}) => initLQSketchCanvas(leafKey, canvasId, existing));
   } else if(isGrid) {
     const currentVal = (currentAnswers[q] || '').replace(/"/g, '&quot;');
     document.getElementById('examOptions').innerHTML =
@@ -1194,6 +1232,11 @@ function commitGridAnswer(value) {
 // it's a separate category for organizing papers, not a different renderer.
 function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics'; }
 
+// [sketch] leaves need a human to judge them exactly like [manual] does
+// (they're scored via manualMarks, not auto-matched) — only the input
+// widget differs (canvas vs textarea), so scoring treats them identically.
+function isManualLikeGrading(gm) { return gm === 'manual' || gm === 'sketch'; }
+
 function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
 
 // Display-only formatting: turns "x^2" / "x^-1" into real superscript
@@ -1238,6 +1281,39 @@ function lqRenderFilledTemplate(template, given) {
   return formatMathText(filled);
 }
 
+// [table] leaves store their template exactly like any other — rows
+// separated by ";", cells by "|" — purely a layout convention for the
+// renderer. Blank order (left-to-right, top-to-bottom through the raw
+// string) still lines up with spec.values, so parseLQAnswerSpec and
+// lqLeafIsCorrect need no changes at all for tables.
+function lqParseTableRows(template) {
+  return String(template || '').split(';').map(row => row.split('|').map(c => c.trim()));
+}
+
+// Read-only filled table (results breakdown) — same blank-filling idea as
+// lqRenderFilledTemplate, laid out as a real <table> instead of inline text.
+function lqRenderFilledTableHtml(template, given) {
+  const rows = lqParseTableRows(template);
+  const parts = String(given || '').split('|||');
+  let i = 0;
+  let html = '<table style="border-collapse:collapse;margin:6px 0"><tbody>';
+  rows.forEach(cells => {
+    html += '<tr>';
+    cells.forEach(cell => {
+      if(cell === '___' || cell === '~~~') {
+        const v = parts[i] !== undefined && parts[i] !== '' ? escapeHtml(parts[i]) : '—';
+        i++;
+        html += '<td style="border:1px solid var(--line);padding:5px 9px;text-align:center">'+v+'</td>';
+      } else {
+        html += '<td style="border:1px solid var(--line);padding:5px 9px;font-weight:700;text-align:center;background:#f8fafc">'+formatMathText(escapeHtml(cell))+'</td>';
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
 function setLQAnswer(leafKey, value) {
   if(value) currentAnswers[leafKey] = value; else delete currentAnswers[leafKey];
 }
@@ -1264,6 +1340,60 @@ function commitLQBlankAnswer(leafKey, blankIndex, value) {
 function commitLQAnswer(leafKey, value) {
   setLQAnswer(leafKey, value);
   if(value) logEvent('answer', { question: leafKey, answer: value, mode: currentMode });
+  saveTimedDraft();
+}
+
+// ---- [sketch] leaves: a small drawing canvas, saved as a compressed PNG
+// data URI in currentAnswers[leafKey] exactly like any other leaf value.
+// Kept physically small (320x220) rather than compressed lossily, so a
+// simple line drawing stays a few KB — comfortably small for a free-tier DB.
+function initLQSketchCanvas(leafKey, canvasId, existingDataUrl) {
+  const canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if(existingDataUrl) {
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    img.src = existingDataUrl;
+  }
+  let drawing = false;
+  const posFromEvent = e => {
+    const rect = canvas.getBoundingClientRect();
+    const p = e.touches && e.touches[0] ? e.touches[0] : e;
+    return { x: (p.clientX - rect.left) * (canvas.width / rect.width), y: (p.clientY - rect.top) * (canvas.height / rect.height) };
+  };
+  const start = e => { e.preventDefault(); drawing = true; const p = posFromEvent(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+  const move = e => { if(!drawing) return; e.preventDefault(); const p = posFromEvent(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+  const end = () => { if(!drawing) return; drawing = false; commitLQSketch(leafKey, canvas); };
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('mouseup', end);
+  canvas.addEventListener('mouseleave', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+}
+
+function commitLQSketch(leafKey, canvas) {
+  const dataUrl = canvas.toDataURL('image/png');
+  // Defensive cap — a canvas this size drawing simple lines should never get
+  // near this, but never let something huge reach a free-tier database.
+  if(dataUrl.length > 300000) {
+    alert('This drawing is too complex to save — please Clear and redraw something simpler.');
+    return;
+  }
+  currentAnswers[leafKey] = dataUrl;
+  logEvent('answer', { question: leafKey, answer: '[sketch drawn]', mode: currentMode });
+  saveTimedDraft();
+}
+
+function clearLQSketch(leafKey) {
+  const canvas = document.getElementById('lqsketch_'+leafKey);
+  if(canvas) { const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  delete currentAnswers[leafKey];
+  logEvent('answer', { question: leafKey, answer: '[sketch cleared]', mode: currentMode });
   saveTimedDraft();
 }
 
@@ -1546,7 +1676,7 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
     const leaves = lqAllLeafKeys(set);
     let score = 0, pending = 0, total = 0;
     leaves.forEach(leafKey => {
-      const isManual = (set.gradingMode || {})[leafKey] === 'manual';
+      const isManual = isManualLikeGrading((set.gradingMode || {})[leafKey]);
       if(isManual && excludeManual) return;
       total++;
       if(isManual) {
@@ -1589,12 +1719,21 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
       leaves.forEach(label => {
         const leafKey = lqLeafKey(parent, label);
         const rawGiven = answers[leafKey];
-        const isManual = (set.gradingMode||{})[leafKey] === 'manual';
+        const gradingModeVal = (set.gradingMode||{})[leafKey] || '';
+        const isManual = isManualLikeGrading(gradingModeVal);
+        const isSketch = gradingModeVal === 'sketch';
+        const isTable = gradingModeVal === 'table';
         const rawModelAnswer = (set.answerKey||{})[leafKey] || '';
         const spec = parseLQAnswerSpec(rawModelAnswer);
-        const given = spec.template ? (rawGiven ? lqRenderFilledTemplate(spec.template, rawGiven) : '—') : (rawGiven ? escapeHtml(rawGiven) : '—');
-        const modelAnswer = spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||')) : formatMathText(String(rawModelAnswer || '').split('|').join(' or '));
-        const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '') + (spec.template ? ' — ' + formatMathText(spec.template) : '');
+        const given = isSketch
+          ? (rawGiven && rawGiven.startsWith('data:image') ? '<img src="'+rawGiven+'" style="max-width:220px;display:block;margin-top:4px;border:1px solid var(--line);border-radius:6px">' : (rawGiven ? escapeHtml(rawGiven) : '—'))
+          : isTable ? (rawGiven ? lqRenderFilledTableHtml(rawModelAnswer, rawGiven) : '—')
+          : spec.template ? (rawGiven ? lqRenderFilledTemplate(spec.template, rawGiven) : '—')
+          : (rawGiven ? escapeHtml(rawGiven) : '—');
+        const modelAnswer = isTable ? lqRenderFilledTableHtml(rawModelAnswer, spec.values.join('|||'))
+          : spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||'))
+          : formatMathText(String(rawModelAnswer || '').split('|').join(' or '));
+        const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '') + (isTable ? ' — table' : isSketch ? ' — sketch' : spec.template ? ' — ' + formatMathText(spec.template) : '');
         let cls, verdictText, extra = '';
         if(isManual && selfCheckOnly) {
           // Overtime/reattempt are self-check only — never officially marked,
