@@ -1535,30 +1535,34 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
     const leaves = lqAllLeafKeys(set);
     let score = 0, pending = 0, total = 0;
     leaves.forEach(leafKey => {
-      const isManual = isManualLikeGrading((set.gradingMode || {})[leafKey]);
-      if(isManual && excludeManual) return; // not counted at all for overtime
-      if(isManual) {
+      const gm = (set.gradingMode || {})[leafKey];
+      const isManual = isManualLikeGrading(gm);
+      // A human can override ANY leaf's mark via manualMarks — not just
+      // manual/sketch ones — because "marks are agreed in chat" applies to
+      // any part, e.g. a [table] leaf where the student got some but not
+      // all blanks right (lqLeafIsCorrect is all-or-nothing per leaf, so
+      // that can't be expressed automatically). A leaf with an override is
+      // treated as human-judged for the overtime exclusion too, since the
+      // override was made against this specific attempt's answers.
+      const mark = manualMarks[leafKey];
+      const hasOverride = mark != null;
+      if((isManual || hasOverride) && excludeManual) return; // not counted at all for overtime
+      const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+      total += maxM;
+      if(hasOverride) {
         // manualMarks[leafKey] is either the legacy boolean (full/zero
-        // credit) or {marks, feedback} for partial credit — see
-        // isManualLikeGrading's comment. Max marks for the leaf defaults to
-        // 1 when the paper didn't specify one via [manual:N]/[sketch:N].
-        const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
-        const mark = manualMarks[leafKey];
-        total += maxM;
+        // credit) or {marks, feedback} for partial credit.
         if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
           score += Math.max(0, Math.min(mark.marks, maxM));
         } else if(mark === true) {
           score += maxM;
-        } else if(mark !== false) {
-          pending++;
         }
+        // mark === false -> 0, already counted toward total above
+      } else if(isManual) {
+        pending++;
       } else {
-        // Auto/table/mcq leaves are still binary (no partial credit), but
-        // still honour a per-leaf mark weighting if one was set — e.g. a
-        // 3-mark auto-graded question shouldn't count the same as a 1-mark
-        // one. Defaults to 1, same as manual/sketch leaves.
-        const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
-        total += maxM;
+        // Auto/table/mcq leaves are still binary (no partial credit) when
+        // there's no override, but still honour a per-leaf mark weighting.
         if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score += maxM;
       }
     });
@@ -1833,7 +1837,9 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
         : formatMathText(String(modelAnswer||'').split('|').join(' or '));
       let cls, verdict, markControl = '';
 
-      if(isManual && isOvertime) {
+      const overrideMark = manualMarks[leafKey];
+      const hasOverride = overrideMark != null;
+      if((isManual || hasOverride) && isOvertime) {
         // Not counted toward the overtime total at all — self-check only.
         cls = 'notattempted';
         verdict = 'Self-check — model answer: ' + modelAnswerDisplay;
@@ -1841,24 +1847,25 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
         total++;
         if(!given) {
           notAttempted++; cls='notattempted'; verdict='— Not attempted';
-        } else if(isManual) {
-          const mark = manualMarks[leafKey];
+        } else if(hasOverride) {
+          // A human override on this leaf's mark — the normal path for
+          // manual/sketch, but any leaf (e.g. a [table] with some blanks
+          // right) can be overridden this way too. Written directly via the
+          // database (e.g. by WPC Operator) — no checkbox for this, just a
+          // read-only display of the marks/feedback, which also shows in
+          // the student's results.
           const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
-          if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
-            // Written directly by WPC Operator (or anyone) via the database —
-            // no checkbox for this, just a read-only display of the marks
-            // and feedback text, which also shows in the student's results.
-            const feedbackHtml = mark.feedback ? '<div style="margin-top:2px;color:var(--muted);font-size:11px">'+escapeHtml(mark.feedback)+'</div>' : '';
-            if(mark.marks >= maxM) { correct++; cls='correct'; }
-            else if(mark.marks <= 0) { incorrect++; cls='incorrect'; }
+          if(overrideMark && typeof overrideMark === 'object' && typeof overrideMark.marks === 'number') {
+            const feedbackHtml = overrideMark.feedback ? '<div style="margin-top:2px;color:var(--muted);font-size:11px">'+escapeHtml(overrideMark.feedback)+'</div>' : '';
+            if(overrideMark.marks >= maxM) { correct++; cls='correct'; }
+            else if(overrideMark.marks <= 0) { incorrect++; cls='incorrect'; }
             else { partial++; cls='notattempted'; }
-            verdict = mark.marks + ' / ' + maxM + ' marks' + feedbackHtml;
-          } else {
-            markControl = '<label style="font-size:11px;font-weight:700;margin-left:8px"><input type="checkbox" class="lq-mark-cb" data-leaf="'+leafKey+'" '+(mark===true?'checked':'')+'> correct</label>';
-            if(mark === true) { correct++; cls='correct'; verdict='✓ Marked correct'; }
-            else if(mark === false) { incorrect++; cls='incorrect'; verdict='✗ Marked incorrect'; }
-            else { pending++; cls='notattempted'; verdict='⏳ Pending your marking'; }
-          }
+            verdict = overrideMark.marks + ' / ' + maxM + ' marks' + feedbackHtml;
+          } else if(overrideMark === true) { correct++; cls='correct'; verdict='✓ Marked correct'; }
+          else { incorrect++; cls='incorrect'; verdict='✗ Marked incorrect'; }
+        } else if(isManual) {
+          markControl = '<label style="font-size:11px;font-weight:700;margin-left:8px"><input type="checkbox" class="lq-mark-cb" data-leaf="'+leafKey+'" '+(overrideMark===true?'checked':'')+'> correct</label>';
+          pending++; cls='notattempted'; verdict='⏳ Pending your marking';
         } else if(lqLeafIsCorrect(given, modelAnswer)) {
           correct++; cls='correct'; verdict='✓ Correct';
         } else {

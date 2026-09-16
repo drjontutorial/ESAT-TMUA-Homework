@@ -1683,27 +1683,34 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
     const leaves = lqAllLeafKeys(set);
     let score = 0, pending = 0, total = 0;
     leaves.forEach(leafKey => {
-      const isManual = isManualLikeGrading((set.gradingMode || {})[leafKey]);
-      if(isManual && excludeManual) return;
-      if(isManual) {
+      const gm = (set.gradingMode || {})[leafKey];
+      const isManual = isManualLikeGrading(gm);
+      // A human can override ANY leaf's mark via manualMarks — not just
+      // manual/sketch ones — because "marks are agreed in chat" applies to
+      // any part, e.g. a [table] leaf where the student got some but not
+      // all blanks right (lqLeafIsCorrect is all-or-nothing per leaf, so
+      // that can't be expressed automatically). A leaf with an override is
+      // treated as human-judged for the overtime exclusion too, since the
+      // override was made against this specific attempt's answers.
+      const mark = manualMarks[leafKey];
+      const hasOverride = mark != null;
+      if((isManual || hasOverride) && excludeManual) return;
+      const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+      total += maxM;
+      if(hasOverride) {
         // manualMarks[leafKey] is either the legacy boolean (full/zero
-        // credit) or {marks, feedback} for partial credit. Max marks for
-        // the leaf defaults to 1 when the paper didn't specify one.
-        const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
-        const mark = manualMarks[leafKey];
-        total += maxM;
+        // credit) or {marks, feedback} for partial credit.
         if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
           score += Math.max(0, Math.min(mark.marks, maxM));
         } else if(mark === true) {
           score += maxM;
-        } else if(mark !== false) {
-          pending++;
         }
+        // mark === false -> 0, already counted toward total above
+      } else if(isManual) {
+        pending++;
       } else {
-        // Auto/table/mcq leaves are still binary (no partial credit), but
-        // still honour a per-leaf mark weighting if one was set. Defaults
-        // to 1, same as manual/sketch leaves.
-        const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+        // Auto/table/mcq leaves are still binary (no partial credit) when
+        // there's no override, but still honour a per-leaf mark weighting.
         total += maxM;
         if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score += maxM;
       }
@@ -1757,22 +1764,27 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
           : formatMathText(String(rawModelAnswer || '').split('|').join(' or '));
         const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '') + (isTable ? ' — table' : isSketch ? ' — sketch' : spec.template ? ' — ' + formatMathText(spec.template) : '');
         let cls, verdictText, extra = '';
-        if(isManual && selfCheckOnly) {
+        const overrideMark = manualMarks[leafKey];
+        const hasOverride = overrideMark != null;
+        if((isManual || hasOverride) && selfCheckOnly) {
           // Overtime/reattempt are self-check only — never officially marked,
           // so just show the model answer for the student to compare against.
           cls = ''; verdictText = 'Self-check';
           extra = '<div class="correct-ans">Model answer: ' + modelAnswer + '</div>';
-        } else if(isManual) {
-          const mark = manualMarks[leafKey];
+        } else if(hasOverride) {
+          // A human override — the normal path for manual/sketch, but any
+          // leaf (e.g. a [table] with some blanks right) can be overridden
+          // this way too.
           const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
-          if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
-            cls = mark.marks >= maxM ? 'correct' : mark.marks > 0 ? 'review' : 'incorrect';
-            verdictText = mark.marks + ' / ' + maxM + ' marks';
-            if(mark.feedback) extra = '<div class="correct-ans">' + escapeHtml(mark.feedback) + '</div>';
+          if(overrideMark && typeof overrideMark === 'object' && typeof overrideMark.marks === 'number') {
+            cls = overrideMark.marks >= maxM ? 'correct' : overrideMark.marks > 0 ? 'review' : 'incorrect';
+            verdictText = overrideMark.marks + ' / ' + maxM + ' marks';
+            if(overrideMark.feedback) extra = '<div class="correct-ans">' + escapeHtml(overrideMark.feedback) + '</div>';
           }
-          else if(mark === true) { cls='correct'; verdictText='✓ Marked correct'; }
-          else if(mark === false) { cls='incorrect'; verdictText='✗ Marked incorrect'; }
-          else { cls='review'; verdictText='⏳ Pending marking'; }
+          else if(overrideMark === true) { cls='correct'; verdictText='✓ Marked correct'; }
+          else { cls='incorrect'; verdictText='✗ Marked incorrect'; }
+        } else if(isManual) {
+          cls='review'; verdictText='⏳ Pending marking';
         } else {
           const isCorrect = lqLeafIsCorrect(rawGiven, rawModelAnswer);
           cls = isCorrect ? 'correct' : 'incorrect';
