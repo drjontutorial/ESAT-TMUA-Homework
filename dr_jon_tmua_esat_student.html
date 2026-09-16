@@ -218,6 +218,16 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 .report-card.open .report-card-chev{transform:rotate(180deg)}
 .report-card-body{display:none;padding:12px 14px;font-size:13px;line-height:1.6;border-top:1px solid var(--line)}
 .report-card.open .report-card-body{display:block}
+.report-tvo-row{display:flex;gap:12px;margin:4px 0 16px}
+.report-tvo-box{flex:1;background:#f1f5f9;border-radius:12px;padding:14px;text-align:center}
+.report-tvo-pct{font-size:20px;font-weight:900;color:var(--brand)}
+.report-tvo-label{font-size:11px;color:var(--muted);font-weight:700;margin-top:2px}
+.report-section-title{font-size:13px;font-weight:800;color:var(--brand);margin:14px 0 8px}
+.report-cat-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12.5px}
+.report-cat-label{width:110px;flex-shrink:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.report-cat-track{flex:1;height:10px;background:var(--line);border-radius:50px;overflow:hidden}
+.report-cat-fill{height:100%;background:var(--brand);border-radius:50px;transition:width .6s ease}
+.report-cat-pct{width:38px;flex-shrink:0;text-align:right;font-weight:800;color:var(--brand)}
 </style>
 </head>
 <body>
@@ -1617,7 +1627,7 @@ function showResults(sub, showOvertimeToo) {
   if(isLQ && !released) {
     summaryHtml = '<div style="font-size:17px;font-weight:800;color:var(--brand);padding:8px 0 4px">📝 Your paper has been submitted</div><div class="frac" style="line-height:1.6">Dr Jon will review your answers and let you know your result — you don\'t need to do anything else for this attempt.</div>';
   } else if(isWpc && released) {
-    summaryHtml = buildReportHtml(sub, liveSet);
+    summaryHtml = buildReportHtml(sub, liveSet, currentSetId, studentCode);
   } else if(isLQ) {
     const timedGradeLQ = computeGrade(timedLive.score, liveSet.gradeBoundaries);
     summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>';
