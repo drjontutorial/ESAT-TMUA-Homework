@@ -340,7 +340,7 @@ async function openParentReport(setId) {
   // Full student report — identical component the student themselves sees,
   // always English, score/grade always live-computed (never a separately
   // stored total, so it can never drift from the answer data).
-  document.getElementById('studentReportContainer').innerHTML = buildReportHtml(sub, set, setId, parentCode);
+  document.getElementById('studentReportContainer').innerHTML = buildReportHtml(sub, set, setId, parentCode) + buildMarkSchemeButtonHtml(set);
 }
 
 function backToParentHome() {
