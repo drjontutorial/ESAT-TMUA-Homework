@@ -295,6 +295,17 @@ function buildReportHtml(sub, set, setId, studentCodeVal) {
     + (grade ? '<div class="report-grade" id="' + instanceId + '_grade" style="opacity:0">' + grade + '</div>' : '')
     + '</div>' + combinedHtml;
 
+  // The written narrative feedback — submissions/{setId}/{code}/report =
+  // {text, marks, generatedAt}, written by whoever marked it once Dr Jon
+  // has agreed the wording in chat. This is the main content of "the
+  // report" from the student's point of view; the score/accordion below is
+  // supporting detail. marks/generatedAt aren't shown separately here — the
+  // live score above already reflects the same agreed marks (via
+  // manualMarks overrides), so there's nothing to duplicate or drift.
+  const narrativeHtml = (sub.report && sub.report.text)
+    ? '<div class="report-narrative">' + escapeHtml(sub.report.text) + '</div>'
+    : '';
+
   const categoryHtml = buildReportCategoryBarsHtml(sub.timedAnswers, set, manualMarks);
   const cards = buildReportAccordionHtml(sub.timedAnswers, set, manualMarks);
 
@@ -317,6 +328,7 @@ function buildReportHtml(sub, set, setId, studentCodeVal) {
   });
 
   return header
+    + narrativeHtml
     + (categoryHtml ? '<div class="report-cards">' + categoryHtml + '</div>' : '')
     + '<div class="report-cards">' + cards + '</div>'
     + trendHtml;
