@@ -197,6 +197,27 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 .nav-legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
 .confirm-unanswered{background:var(--warning-bg);border:1.5px solid #fca5a5;border-radius:10px;padding:12px 14px;font-size:13px;color:#991b1b;font-weight:600;margin-bottom:14px}
 .confirm-ready{background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#065f46;font-weight:600;margin-bottom:14px}
+
+/* ---- WPC report (Phase 1) — score header + per-question accordion ---- */
+.report-score-header{text-align:center;padding:20px 0}
+.report-score-pct{font-size:48px;font-weight:900;color:var(--brand);line-height:1}
+.report-score-frac{font-size:14px;color:var(--muted);margin-top:4px;font-weight:700}
+.report-grade{display:inline-block;margin-top:10px;padding:6px 18px;border-radius:50px;background:var(--brand-light);color:var(--brand);font-weight:900;font-size:18px}
+.report-cards{margin-top:10px}
+.report-card{border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden;background:#fff}
+.report-card.correct{border-color:#6ee7b7}
+.report-card.incorrect{border-color:#fca5a5}
+.report-card.review{border-color:#fbbf24}
+.report-card-head{width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:0;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left}
+.report-card.correct .report-card-head{background:#f0fdf4}
+.report-card.incorrect .report-card-head{background:#fef2f2}
+.report-card.review .report-card-head{background:#fffbeb}
+.report-card-q{font-weight:800;font-size:13px;flex:1}
+.report-card-marks{font-weight:800;font-size:12px;color:var(--muted)}
+.report-card-chev{transition:transform .15s;color:var(--muted)}
+.report-card.open .report-card-chev{transform:rotate(180deg)}
+.report-card-body{display:none;padding:12px 14px;font-size:13px;line-height:1.6;border-top:1px solid var(--line)}
+.report-card.open .report-card-body{display:block}
 </style>
 </head>
 <body>
@@ -375,6 +396,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 
 </div>
 
+<script src="wpc_report_shared.js"></script>
 <script>
 let studentCode = '';
 let studentRecord = null;
@@ -1585,9 +1607,17 @@ function showResults(sub, showOvertimeToo) {
 
   document.getElementById('resultsTitle').textContent = liveSet.title + ' — Results';
 
+  // WPC papers (Phase 1) get the new report treatment — score header with
+  // WPC's fixed grade bands + per-question accordion — instead of the
+  // older inline summary/breakdown used by everything else. Only for the
+  // timed attempt once released; overtime/reattempt below are unaffected.
+  const isWpc = isWpcPaperType(liveSet.paperType);
+
   let summaryHtml;
   if(isLQ && !released) {
     summaryHtml = '<div style="font-size:17px;font-weight:800;color:var(--brand);padding:8px 0 4px">📝 Your paper has been submitted</div><div class="frac" style="line-height:1.6">Dr Jon will review your answers and let you know your result — you don\'t need to do anything else for this attempt.</div>';
+  } else if(isWpc && released) {
+    summaryHtml = buildReportHtml(sub, liveSet);
   } else if(isLQ) {
     const timedGradeLQ = computeGrade(timedLive.score, liveSet.gradeBoundaries);
     summaryHtml = '<div class="pct">' + timedLive.pct + '%</div><div class="frac">Timed: ' + timedLive.score + ' / ' + timedLive.total + ' correct</div>';
@@ -1615,21 +1645,25 @@ function showResults(sub, showOvertimeToo) {
   }
   document.getElementById('scoreSummary').innerHTML = summaryHtml;
 
-  const noteEl = document.createElement('div');
-  noteEl.className = 'submitted-note';
-  noteEl.innerHTML = liveSet.isTutorial
-    ? '✅ This is a practice tutorial — it doesn\'t count toward your real results.'
-    : (isLQ && !released)
-    ? '✅ Your submission has been recorded and will show up in Dr Jon\'s review queue — your score and feedback will appear here once he\'s marked it.'
-    : isLQ
-    ? '✅ Marked and released by Dr Jon.'
-    : '✅ Your submission has been recorded. There is no automatic notification sent to Dr Jon — but your answers and score are already saved and visible to him.';
-  document.getElementById('scoreSummary').appendChild(noteEl);
+  if(!(isWpc && released)) {
+    // buildReportHtml already communicates all of this via the score
+    // header + accordion, so skip the separate note for WPC's new view.
+    const noteEl = document.createElement('div');
+    noteEl.className = 'submitted-note';
+    noteEl.innerHTML = liveSet.isTutorial
+      ? '✅ This is a practice tutorial — it doesn\'t count toward your real results.'
+      : (isLQ && !released)
+      ? '✅ Your submission has been recorded and will show up in Dr Jon\'s review queue — your score and feedback will appear here once he\'s marked it.'
+      : isLQ
+      ? '✅ Marked and released by Dr Jon.'
+      : '✅ Your submission has been recorded. There is no automatic notification sent to Dr Jon — but your answers and score are already saved and visible to him.';
+    document.getElementById('scoreSummary').appendChild(noteEl);
+  }
 
   let breakdownHtml = '';
   if(!isLQ) {
     breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
-  } else if(released) {
+  } else if(released && !isWpc) {
     breakdownHtml += '<div class="card"><h2 style="font-size:18px;margin-bottom:12px">Timed attempt — question breakdown</h2>' + buildBreakdown(sub.timedAnswers, liveSet, manualMarks) + '</div>';
   }
   if(sub.overtimeSubmittedAt) {
@@ -1711,7 +1745,6 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
       } else {
         // Auto/table/mcq leaves are still binary (no partial credit) when
         // there's no override, but still honour a per-leaf mark weighting.
-        total += maxM;
         if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score += maxM;
       }
     });

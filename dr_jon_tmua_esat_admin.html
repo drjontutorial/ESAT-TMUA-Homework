@@ -123,6 +123,27 @@ tbody tr:hover{background:#f8fafc}
 .results-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
 .results-toolbar input{flex:1;min-width:160px;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif}
 .recalc-flag{color:var(--gold);font-weight:800;font-size:10px;margin-left:4px}
+
+/* ---- WPC report (Phase 1) — score header + per-question accordion ---- */
+.report-score-header{text-align:center;padding:20px 0}
+.report-score-pct{font-size:48px;font-weight:900;color:var(--brand);line-height:1}
+.report-score-frac{font-size:14px;color:var(--muted);margin-top:4px;font-weight:700}
+.report-grade{display:inline-block;margin-top:10px;padding:6px 18px;border-radius:50px;background:var(--brand-light);color:var(--brand);font-weight:900;font-size:18px}
+.report-cards{margin-top:10px}
+.report-card{border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden;background:#fff}
+.report-card.correct{border-color:#6ee7b7}
+.report-card.incorrect{border-color:#fca5a5}
+.report-card.review{border-color:#fbbf24}
+.report-card-head{width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:0;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left}
+.report-card.correct .report-card-head{background:#f0fdf4}
+.report-card.incorrect .report-card-head{background:#fef2f2}
+.report-card.review .report-card-head{background:#fffbeb}
+.report-card-q{font-weight:800;font-size:13px;flex:1}
+.report-card-marks{font-weight:800;font-size:12px;color:var(--muted)}
+.report-card-chev{transition:transform .15s;color:var(--muted)}
+.report-card.open .report-card-chev{transform:rotate(180deg)}
+.report-card-body{display:none;padding:12px 14px;font-size:13px;line-height:1.6;border-top:1px solid var(--line)}
+.report-card.open .report-card-body{display:block}
 </style>
 </head>
 <body>
@@ -344,6 +365,11 @@ tbody tr:hover{background:#f8fafc}
   <div class="modal" id="editAnswersModalContent"></div>
 </div>
 
+<div class="modal-overlay" id="reportPreviewModal">
+  <div class="modal" id="reportPreviewModalContent"></div>
+</div>
+
+<script src="wpc_report_shared.js"></script>
 <script>
 const ADMIN_PWD = "drjon223";
 let homeworkSets = {};
@@ -1787,10 +1813,45 @@ function showBreakdownFor(setId, code) {
     : '';
   const editAnswersBtn = isLQ ? '' : '<button class="btn btn-ghost" style="flex:1" onclick="openEditAnswersModal(\''+setId+'\',\''+code+'\')">✏️ Edit Answers</button>';
 
-  html += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">' + promoteBtn + '<button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button>' + editAnswersBtn + '<button class="btn btn-danger" style="flex:1" onclick="deleteAttempt(\''+setId+'\',\''+code+'\')">🗑️ Delete Attempt</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
+  // Phase 1 report preview — lets Dr Jon see exactly what the student sees
+  // on their report page, without logging in as them. Only meaningful once
+  // there's a released WPC report to show. "View as Parent" is laid out
+  // alongside now (per his request) but stays disabled until parents.html
+  // (Phase 2) exists — same entry point, no retrofit needed later.
+  let previewBtns = '';
+  if(isWpcPaperType(set.paperType) && s.resultsReleased) {
+    previewBtns = '<div style="display:flex;gap:10px;margin-top:10px">'
+      + '<button class="btn btn-primary" style="flex:1" onclick="viewAsStudent(\''+setId+'\',\''+code+'\')">👁️ View as Student</button>'
+      + '<button class="btn btn-ghost" style="flex:1" disabled title="Coming in Phase 2, once parents.html exists">👁️ View as Parent (soon)</button>'
+      + '</div>';
+  }
+
+  html += previewBtns + '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">' + promoteBtn + '<button class="btn btn-ghost" style="flex:1" onclick="viewTimelineFor(\''+setId+'\',\''+code+'\')">🕐 Timeline</button>' + editAnswersBtn + '<button class="btn btn-danger" style="flex:1" onclick="deleteAttempt(\''+setId+'\',\''+code+'\')">🗑️ Delete Attempt</button><button class="btn btn-ghost" style="flex:1" onclick="closeBreakdown()">Close</button></div>';
 
   document.getElementById('breakdownModalContent').innerHTML = html;
   document.getElementById('breakdownModal').classList.add('show');
+}
+
+// "View as Student" preview (Phase 1) — renders the exact same report the
+// student sees on their results page (buildReportHtml, from
+// wpc_report_shared.js), read-only, so Dr Jon can sanity-check it without
+// logging in as them. Only reachable for released WPC submissions.
+function viewAsStudent(setId, code) {
+  const allSubsForSet = (setId === currentResultsSetId) ? allSubmissions : null;
+  const s = allSubsForSet ? allSubsForSet[code] : lastLoadedDetailSubs[setId];
+  const set = homeworkSets[setId];
+  if(!s || !set) return;
+  const name = studentName(code) || code;
+  const html = '<h2>👁️ Viewing as Student — ' + name + '</h2>'
+    + '<p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">This is exactly what ' + name + ' sees on their results page — read-only.</p>'
+    + buildReportHtml(s, set)
+    + '<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="closeReportPreview()">Close</button>';
+  document.getElementById('reportPreviewModalContent').innerHTML = html;
+  document.getElementById('reportPreviewModal').classList.add('show');
+}
+
+function closeReportPreview() {
+  document.getElementById('reportPreviewModal').classList.remove('show');
 }
 
 // ---- 16+ Long Questions: breakdown + marking UI. Auto-graded leaves show
