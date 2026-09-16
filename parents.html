@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dr Jon's Test Prep Hub — Parents</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,900&display=swap" rel="stylesheet">
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { getDatabase, ref as _ref, get, set, update, onValue, push } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC_bnP7uXOgqsQ0EiBuoGaIR_CAJVm-lDc",
+  authDomain: "tmua-esat-homework.firebaseapp.com",
+  databaseURL: "https://tmua-esat-homework-default-rtdb.firebaseio.com",
+  projectId: "tmua-esat-homework",
+  storageBucket: "tmua-esat-homework.firebasestorage.app",
+  messagingSenderId: "128546613185",
+  appId: "1:128546613185:web:2367ed4473e2dd8042f140"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// Must match the same gate segment used in admin/student — all three apps
+// share the same Firebase project and need to read/write the same paths.
+const DB_GATE = 'esatTmuaGate7f2Kx9Lw';
+function ref(dbInstance, path) {
+  return _ref(dbInstance, path ? (DB_GATE + '/' + path) : DB_GATE);
+}
+
+window.firebaseDB = { ref, get, set, update, onValue, push, db };
+</script>
+
+<style>
+:root{
+  --brand:#1e40af;--brand-light:#e0e7ff;--bg:#f8fafc;--card:#fff;
+  --green:#0891b2;--green-bg:#e0f2fe;--green-dark:#164e63;
+  --line:#e2e8f0;--ink:#0f172a;--muted:#64748b;--warning:#dc2626;--warning-bg:#fee2e2;
+  --gold:#d97706;--gold-bg:#fef3c7;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--ink)}
+.app{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+
+header{
+  position:sticky;top:0;z-index:99;
+  background:rgba(255,255,255,0.97);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+  padding:14px 16px;
+  margin:0 -16px 20px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+}
+header h1{font-family:'DM Serif Display',serif;font-size:20px;color:var(--brand);line-height:1.1}
+header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.logout-btn{background:none;border:1.5px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:10px;font-weight:700;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif}
+
+.card{background:var(--card);border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,.06);border:1px solid var(--line);padding:24px;margin-bottom:16px}
+.card h2{font-family:'DM Serif Display',serif;font-size:22px;font-weight:400;margin-bottom:6px}
+.card .sub{font-size:13px;color:var(--muted);margin-bottom:16px}
+
+.code-input{border:1.5px solid var(--line);border-radius:12px;padding:13px;margin:0 0 12px;width:100%;font-size:15px;font-family:'DM Sans',sans-serif}
+.btn{display:block;width:100%;background:var(--brand);color:#fff;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer;box-shadow:0 4px 20px rgba(30,64,175,.3)}
+.btn.secondary{background:var(--line);color:var(--ink);box-shadow:none}
+
+.msg{margin:0 0 12px;padding:12px 14px;border-radius:10px;font-weight:600;display:none;font-size:13px}
+.msg.error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;display:block}
+
+.lang-option{display:flex;align-items:center;gap:10px;padding:16px;border:1.5px solid var(--line);border-radius:14px;margin-bottom:10px;cursor:pointer;font-weight:700;font-size:15px}
+.lang-option:active{background:var(--brand-light)}
+.lang-note{background:var(--gold-bg);border:1.5px solid #fbbf24;border-radius:12px;padding:14px 16px;font-size:12.5px;color:#92400e;line-height:1.5;margin-bottom:16px}
+
+.paper-group-header{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--brand);margin:18px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--brand-light)}
+.paper-group-header:first-child{margin-top:0}
+.set-item{background:#f8fafc;border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px;cursor:pointer}
+.set-item:active{background:var(--brand-light)}
+.set-item .t{font-weight:800;font-size:15px;margin-bottom:4px}
+.set-item .m{font-size:12px;color:var(--muted)}
+
+.back-link{font-size:13px;color:var(--brand);font-weight:700;cursor:pointer;margin-bottom:14px;display:inline-block}
+.hidden{display:none!important}
+.empty{text-align:center;padding:30px;color:var(--muted);font-size:13px}
+
+.parent-report-card{background:var(--brand-light);border:1.5px solid #c7d2fe;border-radius:16px;padding:20px;margin-bottom:20px;line-height:1.7;font-size:14px;white-space:pre-wrap}
+.parent-report-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--brand);margin-bottom:10px}
+.student-report-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--brand);margin:20px 0 10px}
+
+/* ---- WPC report (shared look with admin/student — same blue theme) ---- */
+.report-score-header{text-align:center;padding:20px 0}
+.report-score-pct{font-size:48px;font-weight:900;color:var(--brand);line-height:1}
+.report-score-frac{font-size:14px;color:var(--muted);margin-top:4px;font-weight:700}
+.report-grade{display:inline-block;margin-top:10px;padding:6px 18px;border-radius:50px;background:var(--brand-light);color:var(--brand);font-weight:900;font-size:18px}
+.report-cards{margin-top:10px}
+.report-card{border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden;background:#fff}
+.report-card.correct{border-color:#6ee7b7}
+.report-card.incorrect{border-color:#fca5a5}
+.report-card.review{border-color:#fbbf24}
+.report-card-head{width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:0;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left}
+.report-card.correct .report-card-head{background:#f0fdf4}
+.report-card.incorrect .report-card-head{background:#fef2f2}
+.report-card.review .report-card-head{background:#fffbeb}
+.report-card-q{font-weight:800;font-size:13px;flex:1}
+.report-card-marks{font-weight:800;font-size:12px;color:var(--muted)}
+.report-card-chev{transition:transform .15s;color:var(--muted)}
+.report-card.open .report-card-chev{transform:rotate(180deg)}
+.report-card-body{display:none;padding:12px 14px;font-size:13px;line-height:1.6;border-top:1px solid var(--line)}
+.report-card.open .report-card-body{display:block}
+.report-tvo-row{display:flex;gap:12px;margin:4px 0 16px}
+.report-tvo-box{flex:1;background:#f1f5f9;border-radius:12px;padding:14px;text-align:center}
+.report-tvo-pct{font-size:20px;font-weight:900;color:var(--brand)}
+.report-tvo-label{font-size:11px;color:var(--muted);font-weight:700;margin-top:2px}
+.report-section-title{font-size:13px;font-weight:800;color:var(--brand);margin:14px 0 8px}
+.report-cat-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12.5px}
+.report-cat-label{width:110px;flex-shrink:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.report-cat-track{flex:1;height:10px;background:var(--line);border-radius:50px;overflow:hidden}
+.report-cat-fill{height:100%;background:var(--brand);border-radius:50px;transition:width .6s ease}
+.report-cat-pct{width:38px;flex-shrink:0;text-align:right;font-weight:800;color:var(--brand)}
+</style>
+</head>
+<body>
+
+<div class="app">
+<header>
+  <div>
+    <h1 id="headerTitle">Dr Jon's Test Prep Hub</h1>
+    <p id="headerSub">For Parents</p>
+  </div>
+  <button class="logout-btn hidden" id="logoutBtn" onclick="parentLogout()">↩</button>
+</header>
+
+<!-- LOGIN -->
+<div class="card" id="loginCard">
+  <h2>Log in</h2>
+  <p class="sub">Use the same code and password your child logs in with.</p>
+  <div class="msg" id="loginMsg"></div>
+  <input type="text" id="codeInput" class="code-input" maxlength="10" placeholder="Student code">
+  <input type="password" id="pwdInput" class="code-input" placeholder="Password">
+  <button class="btn" onclick="loginParent()">Log in</button>
+</div>
+
+<!-- LANGUAGE PICKER (first login only) -->
+<div class="hidden" id="langCard">
+  <div class="card">
+    <h2>Choose a language</h2>
+    <div class="lang-note">This choice only affects the text on this page and your own report below — your child's own report (further down) is always shown in English, exactly as they see it.</div>
+    <div class="lang-option" onclick="chooseParentLang('en')">🇬🇧 English</div>
+    <div class="lang-option" onclick="chooseParentLang('zh-Hans')">🇨🇳 简体中文</div>
+  </div>
+</div>
+
+<!-- HOME: list of released reports -->
+<div class="hidden" id="homeCard">
+  <div class="card">
+    <h2 id="homeTitle">My Child's Reports</h2>
+    <p class="sub" id="homeSub">Tap a paper to see the report.</p>
+    <div id="paperListContent"></div>
+  </div>
+</div>
+
+<!-- REPORT VIEW -->
+<div class="hidden" id="reportScreen">
+  <span class="back-link" id="backLink" onclick="backToParentHome()">‹ Back</span>
+  <div class="card" id="parentReportContainer"></div>
+  <div class="student-report-title" id="studentReportTitle">Full Report</div>
+  <div class="card" id="studentReportContainer"></div>
+</div>
+
+</div>
+
+<script src="wpc_lq_core_shared.js"></script>
+<script src="wpc_report_shared.js"></script>
+<script>
+let parentCode = '';
+let parentRecord = null;
+let parentLang = 'en';
+let homeworkSets = {};
+let currentReportSetId = null;
+
+// Minimal i18n for the menu chrome + parent report label. Only the parent
+// report text and this chrome are ever translated — the student report
+// (buildReportHtml, loaded from wpc_report_shared.js) is always English.
+const PARENT_I18N = {
+  en: {
+    headerSub: 'For Parents',
+    homeTitle: "My Child's Reports",
+    homeSub: 'Tap a paper to see the report.',
+    noReports: 'No released reports yet — check back once Dr Jon has marked and released one.',
+    parentReportTitle: 'Report for You',
+    studentReportTitle: "Your Child's Full Report",
+    back: '‹ Back',
+    loading: 'Loading…',
+    noParentReport: 'No written report yet for this paper — the score and question breakdown below are still available.'
+  },
+  'zh-Hans': {
+    headerSub: '家长专区',
+    homeTitle: '孩子的报告',
+    homeSub: '点击一份试卷查看报告。',
+    noReports: '暂时未有已发布的报告 —— Dr Jon 批改并发布后会显示在这里。',
+    parentReportTitle: '给您的报告',
+    studentReportTitle: '孩子的完整报告',
+    back: '‹ 返回',
+    loading: '加载中…',
+    noParentReport: '此试卷暂时未有文字报告 —— 下方的分数与逐题详情仍可查看。'
+  }
+};
+function t(key) { return (PARENT_I18N[parentLang] && PARENT_I18N[parentLang][key]) || PARENT_I18N.en[key] || key; }
+
+function showMsg(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + cls;
+}
+
+async function loginParent() {
+  const code = document.getElementById('codeInput').value.trim();
+  const pwd = document.getElementById('pwdInput').value;
+  if(!code || !pwd) { showMsg('loginMsg','Please enter both the code and password','error'); return; }
+  if(!window.firebaseDB) { showMsg('loginMsg','Still connecting, try again in a second','error'); return; }
+  const {ref,get,db} = window.firebaseDB;
+  try {
+    const snap = await get(ref(db,'students/'+code));
+    // Same login as the student — no separate parent password, per Dr Jon.
+    if(!snap.exists() || snap.val().password !== pwd) {
+      showMsg('loginMsg','Incorrect code or password','error');
+      return;
+    }
+    parentCode = code;
+    parentRecord = snap.val();
+    document.getElementById('loginCard').classList.add('hidden');
+    document.getElementById('logoutBtn').classList.remove('hidden');
+    if(parentRecord.parentLang) {
+      parentLang = parentRecord.parentLang;
+      enterParentHome();
+    } else {
+      document.getElementById('langCard').classList.remove('hidden');
+    }
+  } catch(e) {
+    showMsg('loginMsg','Something went wrong — please try again','error');
+  }
+}
+
+async function chooseParentLang(lang) {
+  parentLang = lang;
+  const {ref,update,db} = window.firebaseDB;
+  try { await update(ref(db,'students/'+parentCode), { parentLang: lang }); } catch(e) {}
+  document.getElementById('langCard').classList.add('hidden');
+  enterParentHome();
+}
+
+function parentLogout() {
+  parentCode = ''; parentRecord = null; parentLang = 'en';
+  document.getElementById('logoutBtn').classList.add('hidden');
+  document.getElementById('homeCard').classList.add('hidden');
+  document.getElementById('reportScreen').classList.add('hidden');
+  document.getElementById('langCard').classList.add('hidden');
+  document.getElementById('loginCard').classList.remove('hidden');
+  document.getElementById('codeInput').value = '';
+  document.getElementById('pwdInput').value = '';
+  applyChrome();
+}
+
+function applyChrome() {
+  document.getElementById('headerSub').textContent = t('headerSub');
+  document.getElementById('homeTitle').textContent = t('homeTitle');
+  document.getElementById('homeSub').textContent = t('homeSub');
+  document.getElementById('backLink').textContent = t('back');
+}
+
+async function enterParentHome() {
+  applyChrome();
+  document.getElementById('homeCard').classList.remove('hidden');
+  const {ref,get,db} = window.firebaseDB;
+  const setsSnap = await get(ref(db,'homeworkSets'));
+  homeworkSets = normalizeLQFields(setsSnap.val() || {});
+  await renderParentPaperList();
+}
+
+// Shows every WPC paper (any paperType isWpcPaperType) with a released
+// result for this student code — not gated by approvedSetIds, since a
+// parent viewing an already-marked, already-released result is a
+// different concern from a student being allowed to attempt a paper.
+async function renderParentPaperList() {
+  const container = document.getElementById('paperListContent');
+  container.innerHTML = '<p class="empty">' + t('loading') + '</p>';
+  const {ref,get,db} = window.firebaseDB;
+  const wpcSetIds = Object.keys(homeworkSets).filter(id => isWpcPaperType(homeworkSets[id].paperType));
+  const rows = [];
+  for(const setId of wpcSetIds) {
+    try {
+      const snap = await get(ref(db,'submissions/'+setId+'/'+parentCode));
+      if(!snap.exists()) continue;
+      const sub = snap.val();
+      if(!sub.resultsReleased || !sub.timedSubmittedAt) continue;
+      rows.push({ setId, set: homeworkSets[setId], sub });
+    } catch(e) {}
+  }
+  if(rows.length === 0) {
+    container.innerHTML = '<p class="empty">' + t('noReports') + '</p>';
+    return;
+  }
+  rows.sort((a,b) => b.sub.timedSubmittedAt - a.sub.timedSubmittedAt);
+  let html = '';
+  rows.forEach(({setId, set, sub}) => {
+    const live = computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks || {}, false);
+    const grade = wpcGradeFromPct(live.pct);
+    const date = new Date(sub.timedSubmittedAt).toLocaleDateString('en-GB');
+    html += '<div class="set-item" onclick="openParentReport(\''+setId+'\')"><div class="t">'+escapeHtml(set.title)+'</div><div class="m">'+date+' • '+live.pct+'%'+(grade?' · '+grade:'')+'</div></div>';
+  });
+  container.innerHTML = html;
+}
+
+async function openParentReport(setId) {
+  currentReportSetId = setId;
+  applyChrome();
+  document.getElementById('studentReportTitle').textContent = t('studentReportTitle');
+  document.getElementById('homeCard').classList.add('hidden');
+  document.getElementById('reportScreen').classList.remove('hidden');
+  document.getElementById('parentReportContainer').innerHTML = '<p class="empty">' + t('loading') + '</p>';
+  document.getElementById('studentReportContainer').innerHTML = '';
+
+  const {ref,get,db} = window.firebaseDB;
+  const set = homeworkSets[setId];
+  const snap = await get(ref(db,'submissions/'+setId+'/'+parentCode));
+  const sub = snap.exists() ? snap.val() : null;
+  if(!sub) { document.getElementById('parentReportContainer').innerHTML = '<p class="empty">Could not load this report.</p>'; return; }
+
+  // Parent report text (WPC Operator-written, in whatever language was
+  // chosen) — claudeRecord (internal tracking) is never fetched or shown
+  // here, only report (student) and parentReport.
+  const pr = sub.parentReport;
+  let parentHtml = '<div class="parent-report-title">' + t('parentReportTitle') + '</div>';
+  parentHtml += pr && pr.text ? '<div class="parent-report-card">' + escapeHtml(pr.text) + '</div>' : '<p class="sub">' + t('noParentReport') + '</p>';
+  document.getElementById('parentReportContainer').innerHTML = parentHtml;
+
+  // Full student report — identical component the student themselves sees,
+  // always English, score/grade always live-computed (never a separately
+  // stored total, so it can never drift from the answer data).
+  document.getElementById('studentReportContainer').innerHTML = buildReportHtml(sub, set, setId, parentCode);
+}
+
+function backToParentHome() {
+  document.getElementById('reportScreen').classList.add('hidden');
+  document.getElementById('homeCard').classList.remove('hidden');
+}
+
+// Admin convenience: a link like parents.html?code=Dd01&pwd=... (built from
+// the admin's own Students list) fills in and submits the login form
+// automatically — same login path/password check as typing it, just skips
+// the typing. Removes the params from the visible URL afterward.
+(function autoLoginFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code'), pwd = params.get('pwd');
+  if(!code || !pwd) return;
+  history.replaceState({}, '', window.location.pathname);
+  const tryLogin = () => {
+    if(!window.firebaseDB) { setTimeout(tryLogin, 100); return; }
+    document.getElementById('codeInput').value = code;
+    document.getElementById('pwdInput').value = pwd;
+    loginParent();
+  };
+  tryLogin();
+})();
+</script>
+</body>
+</html>

@@ -2125,6 +2125,22 @@ function deleteStudent(code) {
   remove(ref(db,'students/'+code)).catch(err => alert('❌ Delete failed: ' + err));
 }
 
+// Opens the real student/parent portal, pre-logged-in as that student — no
+// new auth mechanism, just fills in the same code+password the portal's own
+// login form already checks (the password is already right here in the
+// students list). student.html/parents.html strip the params from the
+// visible URL immediately after reading them.
+function enterAsStudent(code) {
+  const s = students[code];
+  if(!s || !s.password) { alert('This student has no password set.'); return; }
+  window.open('dr_jon_tmua_esat_student.html?code=' + encodeURIComponent(code) + '&pwd=' + encodeURIComponent(s.password), '_blank');
+}
+function enterAsParent(code) {
+  const s = students[code];
+  if(!s || !s.password) { alert('This student has no password set.'); return; }
+  window.open('parents.html?code=' + encodeURIComponent(code) + '&pwd=' + encodeURIComponent(s.password), '_blank');
+}
+
 function renderStudentsList() {
   const entries = Object.entries(students).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
   if(entries.length === 0) {
@@ -2137,7 +2153,7 @@ function renderStudentsList() {
     const chips = approved.length
       ? approved.map(id => '<span class="pill pending" style="margin:2px">'+homeworkSets[id].title+'</span>').join(' ')
       : '<span style="color:var(--muted)">— none —</span>';
-    html += '<tr><td><strong>'+code+'</strong></td><td>'+(s.name||'')+'</td><td>'+chips+'</td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="openApprovedPapersModal(\''+code+'\')">📌 Papers</button> <button class="btn btn-primary" style="padding:6px 10px;font-size:11px" onclick="openStudentDetail(\''+code+'\')">📋 Details</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Change this student\'s name or password (not their approved papers — use 📌 Papers for that)" onclick="editStudent(\''+code+'\')">✏️ Edit Login</button> <button class="btn btn-danger" style="padding:6px 10px;font-size:11px" onclick="deleteStudent(\''+code+'\')">Delete</button></td></tr>';
+    html += '<tr><td><strong>'+code+'</strong></td><td>'+(s.name||'')+'</td><td>'+chips+'</td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="openApprovedPapersModal(\''+code+'\')">📌 Papers</button> <button class="btn btn-primary" style="padding:6px 10px;font-size:11px" onclick="openStudentDetail(\''+code+'\')">📋 Details</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Opens the student portal already logged in as them — same login, no typing needed" onclick="enterAsStudent(\''+code+'\')">▶️ Enter Account</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Opens the parent portal already logged in — same code+password as the student" onclick="enterAsParent(\''+code+'\')">👪 Enter as Parent</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Change this student\'s name or password (not their approved papers — use 📌 Papers for that)" onclick="editStudent(\''+code+'\')">✏️ Edit Login</button> <button class="btn btn-danger" style="padding:6px 10px;font-size:11px" onclick="deleteStudent(\''+code+'\')">Delete</button></td></tr>';
   });
   html += '</tbody></table>';
   document.getElementById('studentsListContainer').innerHTML = html;

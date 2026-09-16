@@ -1622,6 +1622,26 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
 // decide whether a warning is actually shown, so this is safe to leave
 // attached at all times rather than juggling add/remove calls per screen.
 window.addEventListener('beforeunload', beforeUnloadHandler);
+
+// Admin convenience: a link like student.html?code=Dd01&pwd=... (built from
+// the admin's own Students list, where the password is already visible)
+// fills in and submits the login form automatically — same login path and
+// password check as typing it by hand, just skips the typing. Removes the
+// params from the visible URL afterward so the password doesn't linger
+// there if the page is reloaded/bookmarked/shared.
+(function autoLoginFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code'), pwd = params.get('pwd');
+  if(!code || !pwd) return;
+  history.replaceState({}, '', window.location.pathname);
+  const tryLogin = () => {
+    if(!window.firebaseDB) { setTimeout(tryLogin, 100); return; }
+    document.getElementById('codeInput').value = code;
+    document.getElementById('pwdInput').value = pwd;
+    loginStudent();
+  };
+  tryLogin();
+})();
 </script>
 </body>
 </html>
