@@ -1700,8 +1700,12 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
           pending++;
         }
       } else {
-        total++;
-        if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score++;
+        // Auto/table/mcq leaves are still binary (no partial credit), but
+        // still honour a per-leaf mark weighting if one was set. Defaults
+        // to 1, same as manual/sketch leaves.
+        const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+        total += maxM;
+        if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score += maxM;
       }
     });
     return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0, pending };

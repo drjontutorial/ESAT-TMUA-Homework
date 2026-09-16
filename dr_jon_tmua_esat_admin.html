@@ -1553,8 +1553,13 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
           pending++;
         }
       } else {
-        total++;
-        if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score++;
+        // Auto/table/mcq leaves are still binary (no partial credit), but
+        // still honour a per-leaf mark weighting if one was set — e.g. a
+        // 3-mark auto-graded question shouldn't count the same as a 1-mark
+        // one. Defaults to 1, same as manual/sketch leaves.
+        const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
+        total += maxM;
+        if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score += maxM;
       }
     });
     return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0, pending };
