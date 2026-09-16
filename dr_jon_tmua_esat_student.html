@@ -516,6 +516,7 @@ const PAPER_TYPE_GROUPS = [
   { key: 'esat',        label: 'Physics' },
   { key: 'sat_math',    label: 'SAT Math' },
   { key: 'wpc_physics', label: 'WPC Physics' },
+  { key: 'wpc_maths',   label: 'WPC Maths' },
   { key: 'imc',         label: 'IMC' },
   { key: 'sixteen_mcq', label: '16+ MCQ' },
   { key: 'lq_16plus',   label: '16+ Long Questions' }
@@ -1236,7 +1237,7 @@ function commitGridAnswer(value) {
 // questions, templated blanks, manual/mcq gradingMode) rather than the flat
 // MCQ answerKey. wpc_physics reuses the exact same engine as lq_16plus —
 // it's a separate category for organizing papers, not a different renderer.
-function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics'; }
+function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics' || t === 'wpc_maths'; }
 
 // [sketch] leaves need a human to judge them exactly like [manual] does
 // (they're scored via manualMarks, not auto-matched) — only the input
