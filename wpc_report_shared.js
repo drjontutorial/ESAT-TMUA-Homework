@@ -152,8 +152,8 @@ function buildReportCategoryBarsHtml(answers, set, manualMarks) {
     const g = groups[topic];
     const pct = g.total ? Math.round((g.score/g.total)*100) : 0;
     html += '<div class="report-cat-row"><div class="report-cat-label">'+escapeHtml(topic)+'</div>'
-      + '<div class="report-cat-track"><div class="report-cat-fill" style="width:'+pct+'%"></div></div>'
-      + '<div class="report-cat-pct">'+pct+'%</div></div>';
+      + '<div class="report-cat-bar-line"><div class="report-cat-track"><div class="report-cat-fill" style="width:'+pct+'%"></div></div>'
+      + '<div class="report-cat-pct">'+pct+'%</div></div></div>';
   });
   return html;
 }
