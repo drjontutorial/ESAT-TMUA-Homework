@@ -308,6 +308,10 @@ tbody tr:hover{background:#f8fafc}
             <label>📄 Paper Link (Google Drive / PDF URL)</label>
             <input type="text" id="setPaperUrl" placeholder="https://drive.google.com/... — students only see this after they press Start">
           </div>
+          <div class="form-group" style="flex:2">
+            <label>📥 Mark Scheme Link (optional)</label>
+            <input type="text" id="setMarkSchemeUrl" placeholder="https://drive.google.com/... — shown as a download button once the student's report is released">
+          </div>
         </div>
 
         <div id="mcqCreateSections">
@@ -1129,6 +1133,7 @@ function saveSet() {
   const paperType = document.getElementById('setPaperType').value;
   const timeLimit = parseInt(document.getElementById('setTimeLimit').value);
   const paperUrl = document.getElementById('setPaperUrl').value.trim();
+  const markSchemeUrl = document.getElementById('setMarkSchemeUrl').value.trim();
   // No UI control for this any more (Dr Jon's tutorial paper is already set
   // up and isn't changing) — just preserve whatever an existing paper
   // already had, and default new papers to false.
@@ -1156,7 +1161,7 @@ function saveSet() {
       if(!confirm('These have no model answer set: ' + missing.join(', ') + '. Save anyway?')) return;
     }
     payload = {
-      title, paperType, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null,
+      title, paperType, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, markSchemeUrl: markSchemeUrl || null,
       totalQuestions: parents.length,
       structure: lqStructure, answerKey: lqAnswerKey, gradingMode: lqGradingMode, leafMaxMarks: lqMaxMarks,
       gradeBoundaries: currentGradeBoundaries, isTutorial,
@@ -1180,7 +1185,7 @@ function saveSet() {
     if(missing.length > 0) {
       if(!confirm('Questions ' + missing.join(', ') + ' have no answer set. Save anyway?')) return;
     }
-    payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, isTutorial, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+    payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, markSchemeUrl: markSchemeUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, isTutorial, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
   }
 
   const setId = editingSetId || push(ref(db,'homeworkSets')).key;
@@ -1211,6 +1216,7 @@ function cancelEdit() {
   document.getElementById('setOptionsCount').value = 8;
   document.getElementById('setTimeLimit').value = 40;
   document.getElementById('setPaperUrl').value = '';
+  document.getElementById('setMarkSchemeUrl').value = '';
   currentGradeBoundaries = [];
   pendingGradeBoundaries = null;
   document.getElementById('gradeBoundaryText').value = '';
@@ -1236,6 +1242,7 @@ async function editSet(setId) {
   document.getElementById('setPaperType').value = s.paperType || 'esat';
   document.getElementById('setTimeLimit').value = s.timeLimitMinutes;
   document.getElementById('setPaperUrl').value = s.paperUrl || '';
+  document.getElementById('setMarkSchemeUrl').value = s.markSchemeUrl || '';
   currentGradeBoundaries = s.gradeBoundaries || [];
   pendingGradeBoundaries = null;
   document.getElementById('gradeBoundaryText').value = '';

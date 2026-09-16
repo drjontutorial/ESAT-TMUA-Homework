@@ -306,6 +306,15 @@ function buildReportHtml(sub, set, setId, studentCodeVal) {
     ? '<div class="report-narrative">' + escapeHtml(sub.report.text) + '</div>'
     : '';
 
+  // Always shown alongside a released report when the paper has one set —
+  // per Dr Jon: the mark scheme should always be attached once the report
+  // goes out. Inline-styled (not a page's own .btn class) so it looks right
+  // on all three pages (admin/student/parent use different button class
+  // names) without needing page-specific CSS here.
+  const markSchemeHtml = set.markSchemeUrl
+    ? '<a href="' + escapeHtml(set.markSchemeUrl) + '" target="_blank" rel="noopener" style="display:block;text-align:center;background:var(--brand,#1e40af);color:#fff;text-decoration:none;font-weight:800;font-size:14px;padding:14px;border-radius:14px;margin:16px 0">📥 Download Mark Scheme</a>'
+    : '';
+
   const categoryHtml = buildReportCategoryBarsHtml(sub.timedAnswers, set, manualMarks);
   const cards = buildReportAccordionHtml(sub.timedAnswers, set, manualMarks);
 
@@ -329,6 +338,7 @@ function buildReportHtml(sub, set, setId, studentCodeVal) {
 
   return header
     + narrativeHtml
+    + markSchemeHtml
     + (categoryHtml ? '<div class="report-cards">' + categoryHtml + '</div>' : '')
     + '<div class="report-cards">' + cards + '</div>'
     + trendHtml;
