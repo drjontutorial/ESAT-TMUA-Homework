@@ -406,6 +406,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 
 </div>
 
+<script src="wpc_lq_core_shared.js"></script>
 <script src="wpc_report_shared.js"></script>
 <script>
 let studentCode = '';
@@ -441,10 +442,6 @@ function timedDeadlineServer() {
   return currentStartedAt + currentSet.timeLimitMinutes * 60 * 1000;
 }
 
-function escapeHtml(v) {
-  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
 function showMsg(id, text, cls) {
   const el = document.getElementById(id);
   el.textContent = text;
@@ -471,27 +468,6 @@ async function loginStudent() {
   } catch(e) {
     showMsg('loginMsg','Something went wrong — please try again','error');
   }
-}
-
-// Firebase turns an object whose keys are all sequential integers into a
-// real JS array, inserting a null "hole" at index 0. LQ question numbers
-// start at 1 (never 0), so structure/answerKey/gradingMode hit this on
-// every single LQ paper — silently poisoning any Object.keys() loop over
-// them with a phantom "parent 0" whose value is null. Strip that out right
-// after every fetch so nothing downstream has to know about it.
-function normalizeLQFields(sets) {
-  Object.values(sets || {}).forEach(s => {
-    if(s && isLQPaperType(s.paperType)) {
-      ['structure','answerKey','gradingMode','leafMaxMarks'].forEach(field => {
-        if(s[field] && typeof s[field] === 'object') {
-          const clean = {};
-          Object.keys(s[field]).forEach(k => { if(s[field][k] != null) clean[k] = s[field][k]; });
-          s[field] = clean;
-        }
-      });
-    }
-  });
-  return sets;
 }
 
 async function enterStudentHome() {
@@ -538,30 +514,6 @@ function loadHomeworkSetsThenShowPaper() {
 function myApprovedSetIds() {
   const approved = (studentRecord && studentRecord.approvedSetIds) || {};
   return Object.keys(approved).filter(id => approved[id] && homeworkSets[id]);
-}
-
-// Papers created before "Paper Type" existed have no paperType and are
-// treated as Physics (the old default), matching the admin side.
-const PAPER_TYPE_GROUPS = [
-  { key: 'tmua',        label: 'Maths' },
-  { key: 'tmua_paper2', label: 'TMUA Paper 2 — Logic & Proof' },
-  { key: 'esat',        label: 'Physics' },
-  { key: 'sat_math',    label: 'SAT Math' },
-  { key: 'wpc_physics', label: 'WPC Physics' },
-  { key: 'wpc_maths',   label: 'WPC Maths' },
-  { key: 'imc',         label: 'IMC' },
-  { key: 'sixteen_mcq', label: '16+ MCQ' },
-  { key: 'lq_16plus',   label: '16+ Long Questions' }
-];
-
-function paperTypeOf(s) {
-  const t = (s && s.paperType) || 'esat';
-  return PAPER_TYPE_GROUPS.some(g => g.key === t) ? t : 'esat';
-}
-
-// Natural sort so "Paper 2" comes before "Paper 10", and A/B/C order works.
-function compareSetTitles(a, b) {
-  return String(a.title||'').localeCompare(String(b.title||''), undefined, { numeric: true, sensitivity: 'base' });
 }
 
 let paperCardRenderToken = 0;
@@ -755,8 +707,6 @@ async function openSet(setId) {
     startTimer();
   }
 }
-
-function optionLetter(n) { return 'ABCDEFGH'[n-1]; }
 
 function logEvent(type, extra) {
   // Timestamped audit trail: when the student confirmed start, every answer
@@ -1265,93 +1215,6 @@ function commitGridAnswer(value) {
 // 16+ Long Questions: same in-memory-then-commit pattern as grid-in, but
 // keyed by leaf (e.g. "5bi") instead of by parent question number, since one
 // screen can hold several separate sub-part answer boxes.
-// Paper types that use the LQ structure/leaf engine (parent/sub-part
-// questions, templated blanks, manual/mcq gradingMode) rather than the flat
-// MCQ answerKey. wpc_physics reuses the exact same engine as lq_16plus —
-// it's a separate category for organizing papers, not a different renderer.
-function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics' || t === 'wpc_maths'; }
-
-// [sketch] leaves need a human to judge them exactly like [manual] does
-// (they're scored via manualMarks, not auto-matched) — only the input
-// widget differs (canvas vs textarea), so scoring treats them identically.
-function isManualLikeGrading(gm) { return gm === 'manual' || gm === 'sketch'; }
-
-function lqLeafKey(parent, label) { return label ? (parent + label) : String(parent); }
-
-// Display-only formatting: turns "x^2" / "x^-1" into real superscript
-// characters (x², x⁻¹) so question templates read like actual maths instead
-// of raw caret notation. Never applied to editable inputs — only to
-// read-only text the student/admin sees rendered.
-const LQ_SUPERSCRIPT_MAP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
-function formatMathText(text) {
-  return String(text || '').replace(/\^(-?\d+)/g, (m, exp) => exp.split('').map(ch => LQ_SUPERSCRIPT_MAP[ch] || ch).join(''));
-}
-
-// A leaf's stored answer is either a plain value, or a template with one or
-// more blanks plus the correct value for each, written as
-// "<template> => <val1>, <val2>, ...". Lets a question like a coordinate or
-// ratio show its real wording with small individual typing boxes, instead
-// of one box where the student has to type brackets/commas themselves. Two
-// blank markers are supported: "___" = number-only box (real type="number"
-// input, can't accept letters), "~~~" = short-text box (exact-matched, but
-// accepts things like "2x").
-const LQ_BLANK_RE = /(___|~~~)/g;
-function parseLQAnswerSpec(raw) {
-  raw = String(raw || '');
-  const idx = raw.indexOf('=>');
-  if(idx === -1) return { template: null, values: [raw], blankTypes: [] };
-  const template = raw.slice(0, idx).trim();
-  const blankTypes = (template.match(LQ_BLANK_RE) || []).map(m => m === '~~~' ? 'text' : 'number');
-  return {
-    template,
-    values: raw.slice(idx + 2).split(',').map(s => s.trim()),
-    blankTypes
-  };
-}
-
-function lqRenderFilledTemplate(template, given) {
-  const parts = String(given || '').split('|||');
-  let i = 0;
-  const filled = template.replace(LQ_BLANK_RE, () => {
-    const v = parts[i] !== undefined && parts[i] !== '' ? escapeHtml(parts[i]) : '—';
-    i++;
-    return v;
-  });
-  return formatMathText(filled);
-}
-
-// [table] leaves store their template exactly like any other — rows
-// separated by ";", cells by "|" — purely a layout convention for the
-// renderer. Blank order (left-to-right, top-to-bottom through the raw
-// string) still lines up with spec.values, so parseLQAnswerSpec and
-// lqLeafIsCorrect need no changes at all for tables.
-function lqParseTableRows(template) {
-  return String(template || '').split(';').map(row => row.split('|').map(c => c.trim()));
-}
-
-// Read-only filled table (results breakdown) — same blank-filling idea as
-// lqRenderFilledTemplate, laid out as a real <table> instead of inline text.
-function lqRenderFilledTableHtml(template, given) {
-  const rows = lqParseTableRows(template);
-  const parts = String(given || '').split('|||');
-  let i = 0;
-  let html = '<table style="border-collapse:collapse;margin:6px 0"><tbody>';
-  rows.forEach(cells => {
-    html += '<tr>';
-    cells.forEach(cell => {
-      if(cell === '___' || cell === '~~~') {
-        const v = parts[i] !== undefined && parts[i] !== '' ? escapeHtml(parts[i]) : '—';
-        i++;
-        html += '<td style="border:1px solid var(--line);padding:5px 9px;text-align:center">'+v+'</td>';
-      } else {
-        html += '<td style="border:1px solid var(--line);padding:5px 9px;font-weight:700;text-align:center;background:#f8fafc">'+formatMathText(escapeHtml(cell))+'</td>';
-      }
-    });
-    html += '</tr>';
-  });
-  html += '</tbody></table>';
-  return html;
-}
 
 function setLQAnswer(leafKey, value) {
   if(value) currentAnswers[leafKey] = value; else delete currentAnswers[leafKey];
@@ -1434,26 +1297,6 @@ function clearLQSketch(leafKey) {
   delete currentAnswers[leafKey];
   logEvent('answer', { question: leafKey, answer: '[sketch cleared]', mode: currentMode });
   saveTimedDraft();
-}
-
-// For grid-in questions the stored correct answer may list several accepted
-// equivalent forms separated by "|" (e.g. "3/4|0.75") — any one matches.
-// Comparison is trimmed + case-insensitive.
-function answersMatch(given, correct) {
-  if(given == null || given === '' || correct == null) return false;
-  const acceptable = String(correct).split('|').map(s => s.trim().toLowerCase());
-  return acceptable.includes(String(given).trim().toLowerCase());
-}
-
-// Every leaf key for a 16+ Long Questions paper (see admin.html's identical
-// helper) — a leaf is a sub-part (e.g. "5bi") if the parent question has
-// sub-parts, or just the parent number itself if it doesn't.
-function lqAllLeafKeys(set) {
-  const keys = [];
-  Object.keys(set.structure || {}).map(Number).sort((a,b)=>a-b).forEach(parent => {
-    (set.structure[parent].length ? set.structure[parent] : ['']).forEach(label => keys.push(lqLeafKey(parent, label)));
-  });
-  return keys;
 }
 
 function computeScore(answers) {
@@ -1700,83 +1543,6 @@ function showResults(sub, showOvertimeToo) {
 // "Continue to my papers" — only shown on the tutorial's results screen.
 function finishTutorial() {
   backToMyPaper();
-}
-
-// manualMarks: { [leafKey]: true|false }, admin-entered correctness for
-// leaves marked 'manual' — undefined means not yet marked ("pending"),
-// which counts toward total but not toward score. Students never set this
-// themselves; it only exists once Dr Jon has reviewed the submission.
-// excludeManual: true for overtime — that's self-check only (the student
-// sees the model answer after submitting), so manual leaves aren't counted
-// toward the overtime score/total at all rather than sitting pending forever.
-// given: for a templated leaf, the student's per-blank answers joined with
-// "|||" (in blank order) — for a plain leaf, just the raw typed value.
-function lqLeafIsCorrect(given, correctRaw) {
-  const spec = parseLQAnswerSpec(correctRaw);
-  if(!spec.template) return answersMatch(given, correctRaw);
-  const givenParts = String(given || '').split('|||');
-  if(givenParts.length !== spec.values.length) return false;
-  return spec.values.every((v, i) => answersMatch(givenParts[i], v));
-}
-
-function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
-  answers = answers || {};
-  manualMarks = manualMarks || {};
-
-  if(isLQPaperType(set.paperType)) {
-    const leaves = lqAllLeafKeys(set);
-    let score = 0, pending = 0, total = 0;
-    leaves.forEach(leafKey => {
-      const gm = (set.gradingMode || {})[leafKey];
-      const isManual = isManualLikeGrading(gm);
-      // A human can override ANY leaf's mark via manualMarks — not just
-      // manual/sketch ones — because "marks are agreed in chat" applies to
-      // any part, e.g. a [table] leaf where the student got some but not
-      // all blanks right (lqLeafIsCorrect is all-or-nothing per leaf, so
-      // that can't be expressed automatically). A leaf with an override is
-      // treated as human-judged for the overtime exclusion too, since the
-      // override was made against this specific attempt's answers.
-      const mark = manualMarks[leafKey];
-      const hasOverride = mark != null;
-      if((isManual || hasOverride) && excludeManual) return;
-      const maxM = (set.leafMaxMarks && set.leafMaxMarks[leafKey]) || 1;
-      total += maxM;
-      if(hasOverride) {
-        // manualMarks[leafKey] is either the legacy boolean (full/zero
-        // credit) or {marks, feedback} for partial credit.
-        if(mark && typeof mark === 'object' && typeof mark.marks === 'number') {
-          score += Math.max(0, Math.min(mark.marks, maxM));
-        } else if(mark === true) {
-          score += maxM;
-        }
-        // mark === false -> 0, already counted toward total above
-      } else if(isManual) {
-        pending++;
-      } else {
-        // Auto/table/mcq leaves are still binary (no partial credit) when
-        // there's no override, but still honour a per-leaf mark weighting.
-        if(lqLeafIsCorrect(answers[leafKey], (set.answerKey||{})[leafKey])) score += maxM;
-      }
-    });
-    return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0, pending };
-  }
-
-  let score = 0;
-  const total = set.totalQuestions;
-  for(let q=1; q<=total; q++) {
-    if(answersMatch(answers[q], set.answerKey[q])) score++;
-  }
-  return { score, total, pct: total ? Math.round((score/total)*1000)/10 : 0 };
-}
-
-// gradeBoundaries: [{min: <correct answers needed>, grade: <label>}, ...],
-// set by Dr Jon (AI-drafted, rough estimate only). Returns the grade for
-// the highest boundary the score meets, or null if none are set.
-function computeGrade(score, gradeBoundaries) {
-  if(!gradeBoundaries || !gradeBoundaries.length) return null;
-  const sorted = gradeBoundaries.slice().sort((a,b) => b.min - a.min);
-  for(const b of sorted) { if(score >= b.min) return b.grade; }
-  return null;
 }
 
 function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
