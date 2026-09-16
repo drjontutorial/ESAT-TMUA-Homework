@@ -203,7 +203,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 .report-score-pct{font-size:48px;font-weight:900;color:var(--brand);line-height:1}
 .report-score-frac{font-size:14px;color:var(--muted);margin-top:4px;font-weight:700}
 .report-grade{display:inline-block;margin-top:10px;padding:6px 18px;border-radius:50px;background:var(--brand-light);color:var(--brand);font-weight:900;font-size:18px}
-.report-cards{margin-top:10px}
+.report-cards{margin-top:10px;text-align:left}
 .report-card{border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden;background:#fff}
 .report-card.correct{border-color:#6ee7b7}
 .report-card.incorrect{border-color:#fca5a5}
@@ -218,7 +218,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 .report-card.open .report-card-chev{transform:rotate(180deg)}
 .report-card-body{display:none;padding:12px 14px;font-size:13px;line-height:1.6;border-top:1px solid var(--line)}
 .report-card.open .report-card-body{display:block}
-.report-narrative{background:var(--brand-light);border:1.5px solid #c7d2fe;border-radius:16px;padding:18px 20px;margin:16px 0;line-height:1.7;font-size:13.5px;white-space:pre-wrap}
+.report-narrative{background:var(--brand-light);border:1.5px solid #c7d2fe;border-radius:16px;padding:18px 20px;margin:16px 0;line-height:1.7;font-size:13.5px;white-space:pre-wrap;text-align:left}
 .report-tvo-row{display:flex;gap:12px;margin:4px 0 16px}
 .report-tvo-box{flex:1;background:#f1f5f9;border-radius:12px;padding:14px;text-align:center}
 .report-tvo-pct{font-size:20px;font-weight:900;color:var(--brand)}
@@ -540,7 +540,11 @@ async function renderMyPaperCard() {
       try {
         const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
         const sub = snap.exists() ? snap.val() : null;
-        if(sub && sub.overtimeSubmittedAt) badge = '<span class="badge completed">Completed (+ overtime)</span>';
+        // A released report is the most important thing to flag — takes
+        // priority over the overtime-available message, since "your report
+        // is ready" matters more than "you can still practise more".
+        if(sub && sub.resultsReleased && isLQPaperType(set.paperType)) badge = '<span class="badge completed">✅ Report updated</span>';
+        else if(sub && sub.overtimeSubmittedAt) badge = '<span class="badge completed">Completed (+ overtime)</span>';
         else if(sub && sub.timedSubmittedAt) badge = '<span class="badge overtime-pending">Timed done — overtime available</span>';
         else if(sub && sub.startedAt) badge = '<span class="badge not-started">In progress</span>';
       } catch(e) {}
