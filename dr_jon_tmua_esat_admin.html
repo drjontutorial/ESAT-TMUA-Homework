@@ -295,7 +295,7 @@ tbody tr:hover{background:#f8fafc}
         <div class="edit-warning hidden" id="editSubmissionWarning"></div>
         <div class="form-row">
           <div class="form-group"><label>Title</label><input type="text" id="setTitle" placeholder="e.g. TMUA Set 1" oninput="titleWasAutoFilled=false"></div>
-          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">Physics (27 questions)</option><option value="tmua">Maths (20 questions)</option><option value="tmua_paper2">TMUA Paper 2 — Logic &amp; Proof (20 questions)</option><option value="sat_math">SAT Math Module (22 questions)</option><option value="wpc_physics">WPC Physics</option><option value="wpc_maths">WPC Maths</option><option value="imc">IMC (25 questions)</option><option value="sixteen_mcq">16+ MCQ (8 questions)</option><option value="lq_16plus">16+ Long Questions</option></select></div>
+          <div class="form-group"><label>Paper Type</label><select id="setPaperType" onchange="updateQuestionCountFromPaperType()"><option value="esat">Physics (27 questions)</option><option value="tmua">Maths (20 questions)</option><option value="tmua_paper2">TMUA Paper 2 — Logic &amp; Proof (20 questions)</option><option value="sat_math">SAT Math Module (22 questions)</option><option value="wpc_physics">WPC Physics</option><option value="wpc_maths">WPC Maths</option><option value="wpc_further_maths">WPC Further Maths</option><option value="imc">IMC (25 questions)</option><option value="sixteen_mcq">16+ MCQ (8 questions)</option><option value="lq_16plus">16+ Long Questions</option></select></div>
           <div class="form-group" id="setTotalQGroup"><label>Total Questions</label><input type="number" id="setTotalQ" min="1" max="100" value="27" onchange="rebuildKeyGrid()"></div>
           <div class="form-group" id="setOptionsCountGroup"><label>Options per Question</label>
             <select id="setOptionsCount" onchange="rebuildKeyGrid()">
@@ -303,6 +303,9 @@ tbody tr:hover{background:#f8fafc}
             </select>
           </div>
           <div class="form-group"><label>Time Limit (minutes)</label><input type="number" id="setTimeLimit" min="1" max="300" value="40"></div>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="setPaperOnly" style="width:auto"> 📄 Paper-only (scan-based) — students download the QP; no timer/Start/typed answers; Dr Jon marks by hand</label>
         </div>
         <div class="form-row">
           <div class="form-group" style="flex:2">
@@ -1138,6 +1141,7 @@ function saveSet() {
   // No UI control for this any more (Dr Jon's tutorial paper is already set
   // up and isn't changing) — just preserve whatever an existing paper
   // already had, and default new papers to false.
+  const deliveryMode = document.getElementById('setPaperOnly').checked ? 'paper_only' : null;
   const isTutorial = !!(editingSetId && homeworkSets[editingSetId] && homeworkSets[editingSetId].isTutorial);
 
   if(!title) { alert('Please enter a title'); return; }
@@ -1165,7 +1169,7 @@ function saveSet() {
       title, paperType, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, markSchemeUrl: markSchemeUrl || null,
       totalQuestions: parents.length,
       structure: lqStructure, answerKey: lqAnswerKey, gradingMode: lqGradingMode, leafMaxMarks: lqMaxMarks,
-      gradeBoundaries: currentGradeBoundaries, isTutorial,
+      gradeBoundaries: currentGradeBoundaries, isTutorial, deliveryMode,
       createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now()
     };
   } else {
@@ -1186,7 +1190,7 @@ function saveSet() {
     if(missing.length > 0) {
       if(!confirm('Questions ' + missing.join(', ') + ' have no answer set. Save anyway?')) return;
     }
-    payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, markSchemeUrl: markSchemeUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, isTutorial, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
+    payload = { title, paperType, totalQuestions: total, optionsCount: optCount, timeLimitMinutes: timeLimit, paperUrl: paperUrl || null, markSchemeUrl: markSchemeUrl || null, answerKey, gridQuestions, gradeBoundaries: currentGradeBoundaries, isTutorial, deliveryMode, createdAt: editingSetId ? (homeworkSets[editingSetId]?.createdAt || Date.now()) : Date.now() };
   }
 
   const setId = editingSetId || push(ref(db,'homeworkSets')).key;
@@ -1218,6 +1222,7 @@ function cancelEdit() {
   document.getElementById('setTimeLimit').value = 40;
   document.getElementById('setPaperUrl').value = '';
   document.getElementById('setMarkSchemeUrl').value = '';
+  document.getElementById('setPaperOnly').checked = false;
   currentGradeBoundaries = [];
   pendingGradeBoundaries = null;
   document.getElementById('gradeBoundaryText').value = '';
@@ -1244,6 +1249,7 @@ async function editSet(setId) {
   document.getElementById('setTimeLimit').value = s.timeLimitMinutes;
   document.getElementById('setPaperUrl').value = s.paperUrl || '';
   document.getElementById('setMarkSchemeUrl').value = s.markSchemeUrl || '';
+  document.getElementById('setPaperOnly').checked = s.deliveryMode === 'paper_only';
   currentGradeBoundaries = s.gradeBoundaries || [];
   pendingGradeBoundaries = null;
   document.getElementById('gradeBoundaryText').value = '';

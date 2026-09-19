@@ -305,6 +305,17 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
   </div>
 </div>
 
+<!-- PAPER-ONLY (scan-based) PAPERS -->
+<div class="hidden" id="paperOnlyScreen">
+  <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
+  <div class="card">
+    <h2 id="paperOnlyTitle">—</h2>
+    <p class="sub" id="paperOnlyMeta">—</p>
+    <p class="sub" style="font-size:14px;line-height:1.6">📝 Do this paper <strong>on paper or iPad</strong> and scan it back to Dr Jon within the time limit. Your work will be marked by hand and your report will appear here once it's ready.</p>
+    <a class="btn" id="paperOnlyDownloadBtn" href="#" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">📥 Download Question Paper</a>
+  </div>
+</div>
+
 <!-- OVERTIME RESUME WARNING -->
 <div class="hidden" id="overtimeWarningScreen">
   <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
@@ -550,7 +561,12 @@ async function renderMyPaperCard() {
         else if(sub && sub.timedSubmittedAt) badge = '<span class="badge overtime-pending">Timed done — overtime available</span>';
         else if(sub && sub.startedAt) badge = '<span class="badge not-started">In progress</span>';
       } catch(e) {}
-      html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+escapeHtml(set.title)+'</div><div class="m">'+set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit</div>'+badge+'</div>';
+      let metaLine = set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit';
+      if(isPaperOnlySet(set)) {
+        metaLine = '📄 Paper-based • '+set.timeLimitMinutes+' min';
+        if(!badge.includes('Report updated')) badge = '<span class="badge not-started">📄 Paper-based – awaiting marking</span>';
+      }
+      html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+escapeHtml(set.title)+'</div><div class="m">'+metaLine+'</div>'+badge+'</div>';
     }
   }
   if(myToken !== paperCardRenderToken) return; // a newer render started — don't overwrite it with stale HTML
@@ -641,7 +657,7 @@ function backToMyPaper() {
   stopUnloadProtection();
   currentMode = null;
   document.getElementById('timerBox').classList.add('hidden');
-  ['warningScreen','overtimeWarningScreen','quizScreen','resultsScreen'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  ['warningScreen','paperOnlyScreen','overtimeWarningScreen','quizScreen','resultsScreen'].forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('studentHomeCard').classList.remove('hidden');
   switchHomeTab('papers');
   renderMyPaperCard();
@@ -655,6 +671,17 @@ async function openSet(setId) {
   const sub = snap.exists() ? snap.val() : null;
 
   document.getElementById('studentHomeCard').classList.add('hidden');
+
+  if(isPaperOnlySet(currentSet)) {
+    if(sub && sub.resultsReleased) { showResults(sub, false); return; }
+    document.getElementById('paperOnlyTitle').textContent = currentSet.title;
+    document.getElementById('paperOnlyMeta').textContent = 'Time limit: ' + currentSet.timeLimitMinutes + ' minutes';
+    const dl = document.getElementById('paperOnlyDownloadBtn');
+    dl.classList.toggle('hidden', !currentSet.paperUrl);
+    if(currentSet.paperUrl) dl.href = currentSet.paperUrl;
+    document.getElementById('paperOnlyScreen').classList.remove('hidden');
+    return;
+  }
 
   if(!sub || !sub.startedAt) {
     // brand new — show warning screen
@@ -1541,7 +1568,7 @@ function showResults(sub, showOvertimeToo) {
   const msBtn = document.getElementById('markSchemeBtn');
   msBtn.classList.toggle('hidden', !showMs);
   if(showMs) msBtn.href = msUrl;
-  document.getElementById('reattemptBtn').classList.toggle('hidden', !!liveSet.isTutorial);
+  document.getElementById('reattemptBtn').classList.toggle('hidden', !!liveSet.isTutorial || isPaperOnlySet(liveSet));
   document.getElementById('tutorialDoneBtn').classList.toggle('hidden', !liveSet.isTutorial);
   document.getElementById('resultsScreen').classList.remove('hidden');
 

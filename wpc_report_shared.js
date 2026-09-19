@@ -32,7 +32,13 @@ function wpcGradeFromPct(pct) {
   return 'E';
 }
 
-function isWpcPaperType(t) { return t === 'wpc_physics' || t === 'wpc_maths'; }
+function isWpcPaperType(t) { return t === 'wpc_physics' || t === 'wpc_maths' || t === 'wpc_further_maths'; }
+
+// Paper-only submissions have no timedSubmittedAt — fall back to the
+// release/report time so sorting and dates still work.
+function reportSubTimestamp(sub) {
+  return (sub && (sub.timedSubmittedAt || sub.resultsReleasedAt || (sub.report && sub.report.generatedAt))) || 0;
+}
 
 // Timed answers win; overtime only fills in a leaf the student never
 // answered in time. Agreed rule for the "timed + overtime combined" grade —
@@ -245,10 +251,10 @@ async function loadAndRenderReportTrend(placeholderId, studentCodeVal, paperType
       const snap = await get(ref(db, 'submissions/'+setId+'/'+studentCodeVal));
       if(!snap.exists()) continue;
       const s = snap.val();
-      if(!s.resultsReleased || !s.timedSubmittedAt) continue;
+      if(!s.resultsReleased) continue;
       const set = homeworkSets[setId];
       const live = computeScoreAgainst(s.timedAnswers, set, s.manualMarks || {}, false);
-      rows.push({ label: set.title, pct: live.pct, ts: s.timedSubmittedAt });
+      rows.push({ label: set.title, pct: live.pct, ts: reportSubTimestamp(s) });
     }
     rows.sort((a,b) => a.ts - b.ts);
     el.innerHTML = buildReportTrendSvg(rows);

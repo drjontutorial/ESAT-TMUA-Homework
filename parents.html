@@ -296,7 +296,7 @@ async function renderParentPaperList() {
       const snap = await get(ref(db,'submissions/'+setId+'/'+parentCode));
       if(!snap.exists()) continue;
       const sub = snap.val();
-      if(!sub.resultsReleased || !sub.timedSubmittedAt) continue;
+      if(!sub.resultsReleased) continue;
       rows.push({ setId, set: homeworkSets[setId], sub });
     } catch(e) {}
   }
@@ -304,12 +304,12 @@ async function renderParentPaperList() {
     container.innerHTML = '<p class="empty">' + t('noReports') + '</p>';
     return;
   }
-  rows.sort((a,b) => b.sub.timedSubmittedAt - a.sub.timedSubmittedAt);
+  rows.sort((a,b) => reportSubTimestamp(b.sub) - reportSubTimestamp(a.sub));
   let html = '';
   rows.forEach(({setId, set, sub}) => {
     const live = computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks || {}, false);
     const grade = wpcGradeFromPct(live.pct);
-    const date = new Date(sub.timedSubmittedAt).toLocaleDateString('en-GB');
+    const date = (reportSubTimestamp(sub) ? new Date(reportSubTimestamp(sub)).toLocaleDateString('en-GB') : '');
     html += '<div class="set-item" onclick="openParentReport(\''+setId+'\')"><div class="t">'+escapeHtml(set.title)+'</div><div class="m">'+date+' • '+live.pct+'%'+(grade?' · '+grade:'')+'</div></div>';
   });
   container.innerHTML = html;

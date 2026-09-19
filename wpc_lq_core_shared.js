@@ -18,7 +18,13 @@
 // MCQ answerKey. wpc_physics/wpc_maths reuse the exact same engine as
 // lq_16plus — they're separate categories for organizing papers, not a
 // different renderer.
-function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics' || t === 'wpc_maths'; }
+function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics' || t === 'wpc_maths' || t === 'wpc_further_maths'; }
+
+// Scan-based papers: student does the paper on paper/iPad and scans it back.
+// No timer, no typed answers; Dr Jon marks by hand and the marks/report are
+// written straight into submissions/{setId}/{code} (no student-created
+// submission, so timedAnswers/timedSubmittedAt may be absent).
+function isPaperOnlySet(s) { return !!s && s.deliveryMode === 'paper_only'; }
 
 // [sketch] leaves need a human to judge them exactly like [manual] does
 // (they're scored via manualMarks, not auto-matched) — only the input
@@ -77,6 +83,7 @@ const PAPER_TYPE_GROUPS = [
   { key: 'sat_math',    label: 'SAT Math' },
   { key: 'wpc_physics', label: 'WPC Physics' },
   { key: 'wpc_maths',   label: 'WPC Maths' },
+  { key: 'wpc_further_maths', label: 'WPC Further Maths' },
   { key: 'imc',         label: 'IMC' },
   { key: 'sixteen_mcq', label: '16+ MCQ' },
   { key: 'lq_16plus',   label: '16+ Long Questions' }
