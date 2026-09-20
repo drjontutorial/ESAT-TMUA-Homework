@@ -308,11 +308,14 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 <!-- PAPER-ONLY (scan-based) PAPERS -->
 <div class="hidden" id="paperOnlyScreen">
   <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
-  <div class="card">
+  <div class="card" style="text-align:center">
     <h2 id="paperOnlyTitle">—</h2>
     <p class="sub" id="paperOnlyMeta">—</p>
-    <p class="sub" style="font-size:14px;line-height:1.6">📝 Do this paper <strong>on paper or iPad</strong> and scan it back to Dr Jon within the time limit. Your work will be marked by hand and your report will appear here once it's ready.</p>
-    <a class="btn" id="paperOnlyDownloadBtn" href="#" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">📥 Download Question Paper</a>
+    <div id="paperOnlyTimer" class="hidden" style="font-size:64px;font-weight:900;color:var(--brand);letter-spacing:2px;margin:10px 0;font-variant-numeric:tabular-nums">--:--</div>
+    <div id="paperOnlyStatus" class="sub" style="font-weight:700;margin-bottom:10px"></div>
+    <p class="sub" style="font-size:14px;line-height:1.6;text-align:left">📝 Do this paper <strong>on paper or iPad</strong>. <strong>The timer starts when you press Download</strong> and can't be reset. Scan your work and <strong>send it to Dr Jon before the timer ends</strong>, then press "I've sent my scan".</p>
+    <a class="btn" id="paperOnlyDownloadBtn" href="#" target="_blank" rel="noopener" onclick="paperOnlyDownloadClick(event)" style="display:block;text-align:center;text-decoration:none">📥 Download Question Paper</a>
+    <button class="btn warn hidden" id="paperOnlySentBtn" onclick="paperOnlyMarkSent()" style="margin-top:10px">✅ I've sent my scan</button>
   </div>
 </div>
 
@@ -550,9 +553,10 @@ async function renderMyPaperCard() {
     for(const setId of inGroup) {
       const set = homeworkSets[setId];
       let badge = '<span class="badge not-started">Not started</span>';
+      let sub = null;
       try {
         const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
-        const sub = snap.exists() ? snap.val() : null;
+        sub = snap.exists() ? snap.val() : null;
         // A released report is the most important thing to flag — takes
         // priority over the overtime-available message, since "your report
         // is ready" matters more than "you can still practise more".
@@ -564,7 +568,7 @@ async function renderMyPaperCard() {
       let metaLine = set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit';
       if(isPaperOnlySet(set)) {
         metaLine = '📄 Paper-based • '+set.timeLimitMinutes+' min';
-        if(!badge.includes('Report updated')) badge = '<span class="badge not-started">📄 Paper-based – awaiting marking</span>';
+        if(!badge.includes('Report updated')) badge = '<span class="badge not-started">'+(sub && sub.paperSentAt ? '📤 Sent – awaiting marking' : sub && sub.paperStartedAt ? '⏱ In progress' : '📄 Paper-based – not started')+'</span>';
       }
       html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+escapeHtml(set.title)+'</div><div class="m">'+metaLine+'</div>'+badge+'</div>';
     }
@@ -657,10 +661,67 @@ function backToMyPaper() {
   stopUnloadProtection();
   currentMode = null;
   document.getElementById('timerBox').classList.add('hidden');
-  ['warningScreen','paperOnlyScreen','overtimeWarningScreen','quizScreen','resultsScreen'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  (clearInterval(paperOnlyInterval), ['warningScreen','paperOnlyScreen','overtimeWarningScreen','quizScreen','resultsScreen']).forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('studentHomeCard').classList.remove('hidden');
   switchHomeTab('papers');
   renderMyPaperCard();
+}
+
+// ---- Paper-only (scan-based) papers: timer starts on first Download ----
+let paperOnlySub = null, paperOnlyInterval = null;
+
+function renderPaperOnlyTimer() {
+  clearInterval(paperOnlyInterval);
+  const timerEl = document.getElementById('paperOnlyTimer');
+  const statusEl = document.getElementById('paperOnlyStatus');
+  const sentBtn = document.getElementById('paperOnlySentBtn');
+  const started = paperOnlySub && paperOnlySub.paperStartedAt;
+  if(!started) { timerEl.classList.add('hidden'); statusEl.textContent = ''; sentBtn.classList.add('hidden'); return; }
+  timerEl.classList.remove('hidden');
+  const deadline = started + currentSet.timeLimitMinutes * 60000;
+  const tick = () => {
+    const sent = paperOnlySub && paperOnlySub.paperSentAt;
+    const left = Math.max(0, Math.ceil((deadline - serverNow()) / 1000));
+    timerEl.textContent = String(Math.floor(left/60)).padStart(2,'0') + ':' + String(left%60).padStart(2,'0');
+    timerEl.style.color = sent ? 'var(--muted)' : left === 0 ? '#b91c1c' : left <= 300 ? '#d97706' : 'var(--brand)';
+    if(sent) {
+      const onTime = paperOnlySub.paperSentAt <= deadline + 5000;
+      statusEl.textContent = onTime ? '✅ Marked as sent on time' : '⚠️ Marked as sent after the time limit';
+      sentBtn.classList.add('hidden');
+      clearInterval(paperOnlyInterval);
+    } else {
+      statusEl.textContent = left === 0 ? "⏰ Time's up — send your scan to Dr Jon now (late submissions are flagged)." : 'Send your scan to Dr Jon before the timer ends.';
+      sentBtn.classList.remove('hidden');
+    }
+  };
+  tick();
+  paperOnlyInterval = setInterval(tick, 500);
+}
+
+async function paperOnlyDownloadClick(e) {
+  if(paperOnlySub && paperOnlySub.paperStartedAt) return; // already started — plain link
+  if(!confirm('The ' + currentSet.timeLimitMinutes + '-minute timer starts NOW and cannot be reset. Download the paper and start?')) { e.preventDefault(); return; }
+  const {ref,update,db} = window.firebaseDB;
+  const paperStartedAt = serverNow();
+  try {
+    await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { studentCode, paperStartedAt });
+  } catch(err) {
+    alert('Could not start — please check your internet connection. Your timer has NOT started.');
+    return;
+  }
+  paperOnlySub = Object.assign({}, paperOnlySub, { paperStartedAt });
+  renderPaperOnlyTimer();
+}
+
+async function paperOnlyMarkSent() {
+  if(!confirm('Confirm you have sent your scan to Dr Jon?')) return;
+  const {ref,update,db} = window.firebaseDB;
+  const paperSentAt = serverNow();
+  try {
+    await update(ref(db,'submissions/'+currentSetId+'/'+studentCode), { paperSentAt });
+    paperOnlySub = Object.assign({}, paperOnlySub, { paperSentAt });
+    renderPaperOnlyTimer();
+  } catch(err) { alert('Could not save — please try again.'); }
 }
 
 async function openSet(setId) {
@@ -674,12 +735,14 @@ async function openSet(setId) {
 
   if(isPaperOnlySet(currentSet)) {
     if(sub && sub.resultsReleased) { showResults(sub, false); return; }
+    paperOnlySub = sub;
     document.getElementById('paperOnlyTitle').textContent = currentSet.title;
     document.getElementById('paperOnlyMeta').textContent = 'Time limit: ' + currentSet.timeLimitMinutes + ' minutes';
     const dl = document.getElementById('paperOnlyDownloadBtn');
     dl.classList.toggle('hidden', !currentSet.paperUrl);
     if(currentSet.paperUrl) dl.href = currentSet.paperUrl;
     document.getElementById('paperOnlyScreen').classList.remove('hidden');
+    renderPaperOnlyTimer();
     return;
   }
 
