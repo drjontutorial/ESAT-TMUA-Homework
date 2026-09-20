@@ -567,6 +567,20 @@ async function renderHomepage() {
     Object.entries(allSubsTree).forEach(([setId, subsForSet]) => {
       const set = homeworkSets[setId];
       Object.entries(subsForSet || {}).forEach(([code, sub]) => {
+        // Paper-only (scan-based) papers: no timedSubmittedAt — the student's
+        // timer start and "I've sent my scan" press are the only signals.
+        if(set && isPaperOnlySet(set) && (sub.paperStartedAt || sub.paperSentAt) && !sub.resultsReleased) {
+          const limitMs = (set.timeLimitMinutes || 0) * 60000;
+          const deadline = (sub.paperStartedAt || 0) + limitMs;
+          let paperNote;
+          if(sub.paperSentAt) {
+            const lateMin = Math.ceil((sub.paperSentAt - deadline) / 60000);
+            paperNote = lateMin > 0 ? '📤 sent <strong style="color:#b91c1c">'+lateMin+' min late</strong>' : '📤 sent on time';
+          } else {
+            paperNote = Date.now() > deadline ? '⏰ time is up — not marked as sent yet' : '⏱ in progress';
+          }
+          needsReview.push({ ts: sub.paperSentAt || sub.paperStartedAt, code, setId, set, paperNote });
+        }
         if(sub.timedSubmittedAt) {
           events.push({ ts: sub.timedSubmittedAt, code, setId, set, type: 'submitted' });
           // Long Questions papers with any manual-marked part still pending
@@ -587,8 +601,8 @@ async function renderHomepage() {
       needsReview.forEach(r => {
         const name = studentName(r.code) || r.code;
         const time = new Date(r.ts).toLocaleString('en-GB');
-        const statusText = r.pending > 0 ? (r.pending+' part'+(r.pending===1?'':'s')+' need marking') : 'ready to release';
-        reviewHtml += '<div class="qrow" style="background:#fef3c7;border-left:3px solid var(--gold);cursor:pointer" onclick="reviewJumpTo(\''+r.setId+'\',\''+r.code+'\')"><span>📝 <strong>'+name+'</strong> completed <em>'+(r.set?r.set.title:r.setId)+'</em> — '+statusText+'</span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
+        const statusText = r.paperNote ? r.paperNote : r.pending > 0 ? (r.pending+' part'+(r.pending===1?'':'s')+' need marking') : 'ready to release';
+        reviewHtml += '<div class="qrow" style="background:#fef3c7;border-left:3px solid var(--gold);cursor:pointer" onclick="reviewJumpTo(\''+r.setId+'\',\''+r.code+'\')"><span>📝 <strong>'+name+'</strong> '+(r.paperNote?'paper-based':'completed')+' <em>'+(r.set?r.set.title:r.setId)+'</em> — '+statusText+'</span><span style="color:var(--muted);font-size:11px">'+time+'</span></div>';
       });
       document.getElementById('needsReviewList').innerHTML = reviewHtml;
       reviewCard.classList.remove('hidden');
