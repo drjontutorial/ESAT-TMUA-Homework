@@ -52,6 +52,16 @@ function escapeHtml(v) {
   return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// LQ sub-part labels are stored compound, e.g. "ci" for part (c)(i) — a
+// letter part with a nested roman-numeral part. Split that back into
+// "(c)(i)" for display rather than showing the raw "(ci)". A plain
+// single-letter label like "a" is unaffected (no roman suffix to split off).
+function formatLQSubLabel(label) {
+  if(!label) return '';
+  const m = String(label).match(/^([a-z]+?)(i{1,3}|iv|vi{0,3}|ix|x{1,3})$/i);
+  return m ? '(' + m[1] + ')(' + m[2] + ')' : '(' + label + ')';
+}
+
 // Firebase turns an object whose keys are all sequential integers into a
 // real JS array, inserting a null "hole" at index 0. LQ question numbers
 // start at 1 (never 0), so structure/answerKey/gradingMode/leafMaxMarks hit

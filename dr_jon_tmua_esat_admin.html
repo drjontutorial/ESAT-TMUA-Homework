@@ -1770,7 +1770,7 @@ function copyLQMarkingPrompt(setId, code) {
     (set.structure[parent].length ? set.structure[parent] : ['']).forEach(label => {
       const leafKey = lqLeafKey(parent, label);
       if((set.gradingMode||{})[leafKey] !== 'manual') return;
-      lines.push('Q'+parent+(label?'('+label+')':'')+':\nModel answer: '+((set.answerKey||{})[leafKey]||'—')+'\nStudent answer: '+(answers[leafKey]||'— not attempted —'));
+      lines.push('Q'+parent+(label?formatLQSubLabel(label):'')+':\nModel answer: '+((set.answerKey||{})[leafKey]||'—')+'\nStudent answer: '+(answers[leafKey]||'— not attempted —'));
     });
   });
   if(lines.length === 0) { alert('No manually-marked questions on this paper.'); return; }

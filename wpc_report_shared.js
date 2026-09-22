@@ -104,7 +104,7 @@ function buildReportAccordionHtml(answers, set, manualMarks) {
       const modelAnswerDisplay = isTable ? lqRenderFilledTableHtml(modelAnswerRaw, spec.values.join('|||'))
         : spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||'))
         : formatMathText(String(modelAnswerRaw||'').split('|').join(' or '));
-      const qLabel = 'Q' + parent + (label ? ' (' + label + ')' : '');
+      const qLabel = 'Q' + parent + (label ? ' ' + formatLQSubLabel(label) : '');
       const marksText = marksAwarded !== null ? (marksAwarded + ' / ' + maxM) : (given ? '⏳ pending' : '—');
 
       html += '<div class="report-card ' + cardCls + '">'

@@ -1052,7 +1052,7 @@ function renderCurrentQuestion() {
     const pendingSketchInits = [];
     leaves.forEach(label => {
       const leafKey = lqLeafKey(q, label);
-      const rowLabel = label ? ('('+label+')') : ('Q'+q);
+      const rowLabel = label ? formatLQSubLabel(label) : ('Q'+q);
       const rawAnswer = (currentSet.answerKey || {})[leafKey];
       const spec = parseLQAnswerSpec(rawAnswer);
       const gradingModeVal = String((currentSet.gradingMode || {})[leafKey] || '');
@@ -1703,7 +1703,7 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
         const modelAnswer = isTable ? lqRenderFilledTableHtml(rawModelAnswer, spec.values.join('|||'))
           : spec.template ? lqRenderFilledTemplate(spec.template, spec.values.join('|||'))
           : formatMathText(String(rawModelAnswer || '').split('|').join(' or '));
-        const qLabel = 'Question ' + parent + (label ? ' (' + label + ')' : '') + (isTable ? ' — table' : isSketch ? ' — sketch' : spec.template ? ' — ' + formatMathText(spec.template) : '');
+        const qLabel = 'Question ' + parent + (label ? ' ' + formatLQSubLabel(label) : '') + (isTable ? ' — table' : isSketch ? ' — sketch' : spec.template ? ' — ' + formatMathText(spec.template) : '');
         let cls, verdictText, extra = '';
         const overrideMark = manualMarks[leafKey];
         const hasOverride = overrideMark != null;
