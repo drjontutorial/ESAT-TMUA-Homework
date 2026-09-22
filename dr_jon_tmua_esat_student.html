@@ -1088,23 +1088,38 @@ function renderCurrentQuestion() {
         // [manual]. Canvas is wired up (draw handlers, existing image
         // restored) after this whole block's innerHTML is actually in the
         // DOM — see pendingSketchInits below.
+        // Some diagram questions (e.g. label the periodic table) need the
+        // student to draw directly on top of a provided image rather than a
+        // blank canvas — set.sketchBg[leafKey] points at that background
+        // (a same-origin repo image, required so the canvas can still be
+        // read back/saved — an external/cross-origin image would taint it).
         const canvasId = 'lqsketch_'+leafKey;
+        const bgUrl = (currentSet.sketchBg || {})[leafKey] || '';
+        const canvasSize = bgUrl ? 'width="360" height="240"' : 'width="320" height="220"';
         html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:8px;color:var(--brand)">'+rowLabel+'</label>'
-          + '<canvas id="'+canvasId+'" width="320" height="220" style="border:1.5px solid var(--line);border-radius:8px;background:#fff;touch-action:none;display:block;max-width:100%;cursor:crosshair"></canvas>'
-          + '<div style="margin-top:8px"><button type="button" onclick="clearLQSketch(\''+leafKey+'\')" style="padding:8px 14px;font-size:12px;font-weight:800;border:1.5px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-family:\'DM Sans\',sans-serif">🗑️ Clear</button> <span style="font-size:11px;color:var(--muted)">Draw with mouse or finger</span></div>'
+          + '<canvas id="'+canvasId+'" '+canvasSize+' style="border:1.5px solid var(--line);border-radius:8px;background:#fff;touch-action:none;display:block;max-width:100%;cursor:crosshair"></canvas>'
+          + '<div style="margin-top:8px"><button type="button" onclick="clearLQSketch(\''+leafKey+'\')" style="padding:8px 14px;font-size:12px;font-weight:800;border:1.5px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-family:\'DM Sans\',sans-serif">🗑️ Clear</button> <span style="font-size:11px;color:var(--muted)">Draw with mouse or finger'+(bgUrl?' — label directly on the diagram':'')+'</span></div>'
           + '</div>';
-        pendingSketchInits.push({ leafKey, canvasId, existing: currentAnswers[leafKey] || '' });
+        pendingSketchInits.push({ leafKey, canvasId, existing: currentAnswers[leafKey] || '', bgUrl });
       } else if(mcqMatch) {
-        // Real clickable A/B/C/D-style options, like the MCQ papers — the
-        // student picks a letter rather than typing anything.
+        // Real clickable A/B/C/D options — set.mcqOptions[leafKey] is an
+        // optional array of per-letter option text (e.g. "3d5 4s2") shown
+        // next to the letter. No images here — MCQ choices are always
+        // text/letter only; a diagram-based option is answered by the
+        // student looking at the printed QP and just picking a letter.
         const count = parseInt(mcqMatch[1]);
         const current = currentAnswers[leafKey];
+        const optionText = (currentSet.mcqOptions || {})[leafKey] || [];
         let opts = '';
         for(let i=1; i<=count; i++) {
           const letter = optionLetter(i);
           const id = 'lqmcq_'+leafKey+'_'+letter;
           const checked = current === letter ? 'checked' : '';
-          opts += '<label class="examopt-row" for="'+id+'"><input type="radio" name="lqmcq_'+leafKey+'" id="'+id+'" value="'+letter+'" '+checked+' onchange="commitLQAnswer(\''+leafKey+'\',\''+letter+'\')"><span class="examopt-radio"></span><span class="examopt-label">'+letter+'</span></label>';
+          const text = optionText[i-1];
+          const labelInner = text
+            ? '<span class="examopt-label">'+letter+' — '+formatMathText(escapeHtml(text))+'</span>'
+            : '<span class="examopt-label">'+letter+'</span>';
+          opts += '<label class="examopt-row" for="'+id+'"><input type="radio" name="lqmcq_'+leafKey+'" id="'+id+'" value="'+letter+'" '+checked+' onchange="commitLQAnswer(\''+leafKey+'\',\''+letter+'\')"><span class="examopt-radio"></span>'+labelInner+'</label>';
         }
         html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:8px;color:var(--brand)">'+rowLabel+'</label>'+opts+'</div>';
       } else if(spec.template) {
@@ -1144,7 +1159,7 @@ function renderCurrentQuestion() {
       }
     });
     document.getElementById('examOptions').innerHTML = html;
-    pendingSketchInits.forEach(({leafKey, canvasId, existing}) => initLQSketchCanvas(leafKey, canvasId, existing));
+    pendingSketchInits.forEach(({leafKey, canvasId, existing, bgUrl}) => initLQSketchCanvas(leafKey, canvasId, existing, bgUrl));
   } else if(isGrid) {
     const currentVal = (currentAnswers[q] || '').replace(/"/g, '&quot;');
     document.getElementById('examOptions').innerHTML =
@@ -1346,16 +1361,23 @@ function commitLQAnswer(leafKey, value) {
 // data URI in currentAnswers[leafKey] exactly like any other leaf value.
 // Kept physically small (320x220) rather than compressed lossily, so a
 // simple line drawing stays a few KB — comfortably small for a free-tier DB.
-function initLQSketchCanvas(leafKey, canvasId, existingDataUrl) {
+function initLQSketchCanvas(leafKey, canvasId, existingDataUrl, bgUrl) {
   const canvas = document.getElementById(canvasId);
   if(!canvas) return;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if(bgUrl) canvas.dataset.bgUrl = bgUrl;
+  // existingDataUrl (a previous save) already has any background baked in,
+  // so it fully replaces a fresh bgUrl draw rather than needing to layer.
   if(existingDataUrl) {
     const img = new Image();
     img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     img.src = existingDataUrl;
+  } else if(bgUrl) {
+    const bg = new Image();
+    bg.onload = () => ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+    bg.src = bgUrl;
   }
   let drawing = false;
   const posFromEvent = e => {
@@ -1390,7 +1412,12 @@ function commitLQSketch(leafKey, canvas) {
 
 function clearLQSketch(leafKey) {
   const canvas = document.getElementById('lqsketch_'+leafKey);
-  if(canvas) { const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  if(canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const bgUrl = canvas.dataset.bgUrl;
+    if(bgUrl) { const bg = new Image(); bg.onload = () => ctx.drawImage(bg, 0, 0, canvas.width, canvas.height); bg.src = bgUrl; }
+  }
   delete currentAnswers[leafKey];
   logEvent('answer', { question: leafKey, answer: '[sketch cleared]', mode: currentMode });
   saveTimedDraft();
