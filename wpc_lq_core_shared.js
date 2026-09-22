@@ -18,7 +18,7 @@
 // MCQ answerKey. wpc_physics/wpc_maths reuse the exact same engine as
 // lq_16plus — they're separate categories for organizing papers, not a
 // different renderer.
-function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics' || t === 'wpc_maths' || t === 'wpc_further_maths' || t === 'wpc_chemistry'; }
+function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics' || t === 'wpc_maths' || t === 'wpc_further_maths' || t === 'wpc_chemistry' || t === 'wpc_dse_maths'; }
 
 // Scan-based papers: student does the paper on paper/iPad and scans it back.
 // No timer, no typed answers; Dr Jon marks by hand and the marks/report are
@@ -83,6 +83,7 @@ const PAPER_TYPE_GROUPS = [
   { key: 'sat_math',    label: 'SAT Math' },
   { key: 'wpc_physics', label: 'WPC Physics' },
   { key: 'wpc_chemistry', label: 'WPC Chemistry' },
+  { key: 'wpc_dse_maths', label: 'WPC DSE Maths' },
   { key: 'wpc_maths',   label: 'WPC Maths' },
   { key: 'wpc_further_maths', label: 'WPC Further Maths' },
   { key: 'imc',         label: 'IMC' },
