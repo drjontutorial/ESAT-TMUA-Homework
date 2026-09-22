@@ -32,7 +32,7 @@ function wpcGradeFromPct(pct) {
   return 'E';
 }
 
-function isWpcPaperType(t) { return t === 'wpc_physics' || t === 'wpc_maths' || t === 'wpc_further_maths'; }
+function isWpcPaperType(t) { return t === 'wpc_physics' || t === 'wpc_maths' || t === 'wpc_further_maths' || t === 'wpc_chemistry'; }
 
 // Paper-only submissions have no timedSubmittedAt — fall back to the
 // release/report time so sorting and dates still work.
