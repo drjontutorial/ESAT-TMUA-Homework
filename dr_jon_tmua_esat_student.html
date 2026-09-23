@@ -91,6 +91,30 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 .msg.success{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;display:block}
 .msg.error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;display:block}
 
+.psection-title{font-size:13px;font-weight:800;color:var(--ink,#0f172a);margin:20px 0 10px;display:flex;align-items:center;gap:8px}
+.psection-title:first-child{margin-top:0}
+.psection-count{background:var(--brand-light);color:var(--brand);font-size:11px;padding:2px 8px;border-radius:50px}
+.pcard{display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--line);border-left:5px solid var(--line);border-radius:14px;padding:14px 14px 14px 16px;margin-bottom:10px;cursor:pointer;transition:transform .12s, box-shadow .12s}
+.pcard:hover{box-shadow:0 4px 14px rgba(30,64,175,.10);transform:translateY(-1px)}
+.pcard-main{flex:1;min-width:0}
+.pcard-subject{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--brand)}
+.pcard-title{font-weight:800;font-size:15px;margin:2px 0 3px;line-height:1.3}
+.pcard-meta{font-size:12px;color:var(--muted)}
+.pcard-status{font-size:12px;font-weight:700;margin-top:6px}
+.pcard-action{flex-shrink:0;font-size:13px;font-weight:800;padding:9px 14px;border-radius:10px;background:var(--brand-light);color:var(--brand);white-space:nowrap}
+.pcard.tone-new{border-left-color:var(--brand)}
+.pcard.tone-new .pcard-action{background:var(--brand);color:#fff}
+.pcard.tone-new .pcard-status{color:var(--brand)}
+.pcard.tone-urgent{border-left-color:#d97706;background:#fffbeb}
+.pcard.tone-urgent .pcard-action{background:#d97706;color:#fff}
+.pcard.tone-urgent .pcard-status{color:#b45309}
+.pcard.tone-wait{border-left-color:#94a3b8}
+.pcard.tone-wait .pcard-status{color:var(--muted)}
+.pcard.tone-good{border-left-color:#10b981}
+.pcard.tone-good .pcard-status{color:#047857}
+.pempty{background:var(--brand-light);color:var(--brand);font-weight:700;font-size:13.5px;border-radius:12px;padding:14px;text-align:center;margin-bottom:6px}
+@media (max-width:520px){.pcard{flex-wrap:wrap}.pcard-action{width:100%;text-align:center}}
+.pshow-more{width:100%;background:none;border:1.5px dashed var(--line);border-radius:12px;padding:10px;font-weight:800;font-size:12.5px;color:var(--muted);cursor:pointer;font-family:inherit}
 .paper-group-header{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--brand);margin:18px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--brand-light)}
 .paper-group-header:first-child{margin-top:0}
 .set-item{background:#f8fafc;border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px;cursor:pointer;transition:all .15s}
@@ -264,7 +288,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 
   <div id="myPapersSection">
     <div class="card">
-      <p class="sub" style="margin-bottom:14px">Papers your tutor has approved for you. Tap one to start or view your results.</p>
+      <p class="sub" style="margin-bottom:14px">Tap a paper to start it or see your results.</p>
       <div id="myPaperContent"></div>
     </div>
   </div>
@@ -535,6 +559,35 @@ function myApprovedSetIds() {
 
 let paperCardRenderToken = 0;
 
+// Student paper list, organised by what the student needs to DO rather than
+// by subject: "To do" first (with a clear Start/Continue button), then
+// papers waiting for Dr Jon, then finished ones. The subject is a small tag
+// on each card instead of a section header, so a student with papers in
+// five subjects still sees one short, obvious list.
+function classifyPaperForStudent(set, sub) {
+  const isLQ = isLQPaperType(set.paperType);
+  if(isPaperOnlySet(set)) {
+    if(sub && sub.resultsReleased) return { section: 'done', status: 'Report ready', tone: 'good', action: 'View report', fresh: true };
+    if(sub && sub.paperSentAt) return { section: 'waiting', status: 'Scan sent — Dr Jon is marking', tone: 'wait', action: 'View' };
+    if(sub && sub.paperStartedAt) return { section: 'todo', status: 'Timer running — send your scan', tone: 'urgent', action: 'Continue', rank: 0 };
+    return { section: 'todo', status: 'Do it on paper, then scan it back', tone: 'new', action: 'Start', rank: 1 };
+  }
+  if(sub && sub.timedSubmittedAt) {
+    if(isLQ && !set.isTutorial) {
+      if(sub.resultsReleased) return { section: 'done', status: 'Report ready', tone: 'good', action: 'View report', fresh: true };
+      return { section: 'waiting', status: 'Submitted — Dr Jon is marking', tone: 'wait', action: 'View' };
+    }
+    return { section: 'done', status: sub.overtimeSubmittedAt ? 'Completed (+ overtime)' : 'Completed', tone: 'good', action: 'View results' };
+  }
+  if(sub && sub.startedAt) return { section: 'todo', status: 'In progress — timer is running', tone: 'urgent', action: 'Continue', rank: 0 };
+  return { section: 'todo', status: 'Not started', tone: 'new', action: 'Start', rank: 1 };
+}
+
+function paperGroupLabel(set) {
+  const g = PAPER_TYPE_GROUPS.find(g => g.key === paperTypeOf(set));
+  return g ? g.label : '';
+}
+
 async function renderMyPaperCard() {
   const myToken = ++paperCardRenderToken;
   const container = document.getElementById('myPaperContent');
@@ -544,36 +597,53 @@ async function renderMyPaperCard() {
     return;
   }
   const {ref,get,db} = window.firebaseDB;
+  // Fetch all submissions in parallel rather than one after another.
+  const subs = await Promise.all(setIds.map(id =>
+    get(ref(db,'submissions/'+id+'/'+studentCode)).then(snap => snap.exists() ? snap.val() : null).catch(() => null)));
+  if(myToken !== paperCardRenderToken) return;
+
+  const items = setIds.map((id, i) => {
+    const set = homeworkSets[id];
+    return { id, set, sub: subs[i], info: classifyPaperForStudent(set, subs[i]) };
+  });
+  const todo = items.filter(x => x.info.section === 'todo')
+    .sort((a,b) => (a.info.rank - b.info.rank) || compareSetTitles(a.set, b.set));
+  const waiting = items.filter(x => x.info.section === 'waiting');
+  const lastTouch = x => x.sub ? (x.sub.resultsReleasedAt || x.sub.timedSubmittedAt || x.sub.paperSentAt || 0) : 0;
+  const done = items.filter(x => x.info.section === 'done').sort((a,b) => lastTouch(b) - lastTouch(a));
+
+  const card = x => {
+    const meta = isPaperOnlySet(x.set) ? ('On paper • ' + x.set.timeLimitMinutes + ' min')
+      : (x.set.totalQuestions + ' questions • ' + x.set.timeLimitMinutes + ' min');
+    return '<div class="pcard tone-' + x.info.tone + '" onclick="openSet(\'' + x.id + '\')">'
+      + '<div class="pcard-main">'
+      + '<div class="pcard-subject">' + escapeHtml(paperGroupLabel(x.set)) + '</div>'
+      + '<div class="pcard-title">' + escapeHtml(x.set.title) + '</div>'
+      + '<div class="pcard-meta">' + meta + '</div>'
+      + '<div class="pcard-status">' + x.info.status + '</div>'
+      + '</div>'
+      + '<div class="pcard-action">' + x.info.action + ' ›</div>'
+      + '</div>';
+  };
+
   let html = '';
-  for(const group of PAPER_TYPE_GROUPS) {
-    const inGroup = setIds.filter(id => paperTypeOf(homeworkSets[id]) === group.key)
-                          .sort((a,b) => compareSetTitles(homeworkSets[a], homeworkSets[b]));
-    if(inGroup.length === 0) continue;
-    html += '<div class="paper-group-header">' + group.label + '</div>';
-    for(const setId of inGroup) {
-      const set = homeworkSets[setId];
-      let badge = '<span class="badge not-started">Not started</span>';
-      let sub = null;
-      try {
-        const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
-        sub = snap.exists() ? snap.val() : null;
-        // A released report is the most important thing to flag — takes
-        // priority over the overtime-available message, since "your report
-        // is ready" matters more than "you can still practise more".
-        if(sub && sub.resultsReleased && isLQPaperType(set.paperType)) badge = '<span class="badge completed">✅ Report updated</span>';
-        else if(sub && sub.overtimeSubmittedAt) badge = '<span class="badge completed">Completed (+ overtime)</span>';
-        else if(sub && sub.timedSubmittedAt) badge = '<span class="badge overtime-pending">Timed done — overtime available</span>';
-        else if(sub && sub.startedAt) badge = '<span class="badge not-started">In progress</span>';
-      } catch(e) {}
-      let metaLine = set.totalQuestions+' questions • '+set.timeLimitMinutes+' min time limit';
-      if(isPaperOnlySet(set)) {
-        metaLine = '📄 Paper-based • '+set.timeLimitMinutes+' min';
-        if(!badge.includes('Report updated')) badge = '<span class="badge not-started">'+(sub && sub.paperSentAt ? '📤 Sent – awaiting marking' : sub && sub.paperStartedAt ? '⏱ In progress' : '📄 Paper-based – not started')+'</span>';
-      }
-      html += '<div class="set-item" onclick="openSet(\''+setId+'\')"><div class="t">'+escapeHtml(set.title)+'</div><div class="m">'+metaLine+'</div>'+badge+'</div>';
+  if(todo.length) {
+    html += '<div class="psection-title">📝 To do <span class="psection-count">' + todo.length + '</span></div>' + todo.map(card).join('');
+  } else {
+    html += '<div class="pempty">🎉 You\'re all caught up — nothing to do right now.</div>';
+  }
+  if(waiting.length) {
+    html += '<div class="psection-title">⏳ Waiting for Dr Jon <span class="psection-count">' + waiting.length + '</span></div>' + waiting.map(card).join('');
+  }
+  if(done.length) {
+    const SHOW = 3;
+    html += '<div class="psection-title">✅ Finished <span class="psection-count">' + done.length + '</span></div>'
+      + done.slice(0, SHOW).map(card).join('');
+    if(done.length > SHOW) {
+      html += '<div id="doneMore" class="hidden">' + done.slice(SHOW).map(card).join('') + '</div>'
+        + '<button class="pshow-more" onclick="document.getElementById(\'doneMore\').classList.remove(\'hidden\');this.remove()">Show ' + (done.length - SHOW) + ' more</button>';
     }
   }
-  if(myToken !== paperCardRenderToken) return; // a newer render started — don't overwrite it with stale HTML
   container.innerHTML = html;
 }
 
