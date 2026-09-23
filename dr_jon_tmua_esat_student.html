@@ -631,24 +631,30 @@ async function renderMyPaperCard() {
       + '</div>';
   };
 
-  let html = '';
-  if(todo.length) {
-    html += '<div class="psection-title">📝 To do <span class="psection-count">' + todo.length + '</span></div>' + todo.map(card).join('');
-  } else {
-    html += '<div class="pempty">🎉 You\'re all caught up — nothing to do right now.</div>';
-  }
-  if(waiting.length) {
-    html += '<div class="psection-title">⏳ Waiting for Dr Jon <span class="psection-count">' + waiting.length + '</span></div>' + waiting.map(card).join('');
-  }
-  if(done.length) {
-    const SHOW = 3;
-    html += '<div class="psection-title">✅ Finished <span class="psection-count">' + done.length + '</span></div>'
-      + done.slice(0, SHOW).map(card).join('');
-    if(done.length > SHOW) {
-      html += '<div id="doneMore" class="hidden">' + done.slice(SHOW).map(card).join('') + '</div>'
-        + '<button class="pshow-more" onclick="document.getElementById(\'doneMore\').classList.remove(\'hidden\');this.remove()">Show ' + (done.length - SHOW) + ' more</button>';
+  // Front page shows only the most recent paper per subject in each
+  // section (a TMUA/ESAT student can have 20+ papers); the rest sit behind
+  // one "Show all" button per section.
+  const section = (key, title, list, emptyHtml) => {
+    if(!list.length) return emptyHtml || '';
+    const seen = new Set(), front = [], rest = [];
+    list.forEach(x => {
+      const g = paperTypeOf(x.set);
+      // In-progress papers (timer running) are always shown up front.
+      if(!seen.has(g) || x.info.tone === 'urgent') { seen.add(g); front.push(x); } else rest.push(x);
+    });
+    let out = '<div class="psection-title">' + title + ' <span class="psection-count">' + list.length + '</span></div>' + front.map(card).join('');
+    if(rest.length) {
+      out += '<div id="more_' + key + '" class="hidden">' + rest.map(card).join('') + '</div>'
+        + '<button class="pshow-more" onclick="document.getElementById(\'more_' + key + '\').classList.remove(\'hidden\');this.remove()">Show all ' + list.length + ' papers</button>';
     }
-  }
+    return out;
+  };
+  const newest = (a,b) => ((b.set.createdAt||0) - (a.set.createdAt||0)) || compareSetTitles(b.set, a.set);
+  todo.sort((a,b) => (a.info.rank - b.info.rank) || newest(a,b));
+  waiting.sort((a,b) => lastTouch(b) - lastTouch(a));
+  let html = section('todo', '📝 To do', todo, '<div class="pempty">🎉 You\'re all caught up — nothing to do right now.</div>')
+    + section('waiting', '⏳ Waiting for Dr Jon', waiting)
+    + section('done', '✅ Finished', done);
   container.innerHTML = html;
 }
 
