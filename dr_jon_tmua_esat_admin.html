@@ -1684,10 +1684,10 @@ function buildLQBreakdownSection(label, answers, set, manualMarks, flagged, setI
       const isSketch = gradingModeVal === 'sketch';
       const isTable = gradingModeVal === 'table';
       const spec = parseLQAnswerSpec(modelAnswer);
-      const displayLabel = isTable ? (label2?'('+label2+') ':'') + 'table'
-        : isSketch ? (label2?'('+label2+') ':'') + 'sketch'
-        : spec.template ? (label2?'('+label2+') ':'') + formatMathText(spec.template)
-        : (label2 ? ('('+label2+')') : '');
+      const displayLabel = isTable ? (label2?formatLQSubLabel(label2)+' ':'') + 'table'
+        : isSketch ? (label2?formatLQSubLabel(label2)+' ':'') + 'sketch'
+        : spec.template ? (label2?formatLQSubLabel(label2)+' ':'') + formatMathText(spec.template)
+        : (label2 ? formatLQSubLabel(label2) : '');
       const givenDisplay = isSketch
         ? (given && given.startsWith('data:image') ? '<img src="'+given+'" style="max-width:220px;display:block;margin-top:4px;border:1px solid var(--line);border-radius:6px">' : (given ? escapeHtml(given) : '—'))
         : isTable ? (given ? lqRenderFilledTableHtml(modelAnswer, given) : '—')
