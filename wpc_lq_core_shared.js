@@ -58,6 +58,11 @@ function escapeHtml(v) {
 // single-letter label like "a" is unaffected (no roman suffix to split off).
 function formatLQSubLabel(label) {
   if(!label) return '';
+  const romanOnly = /^(i{1,3}|iv|vi{0,3}|ix|x{1,3})$/i;
+  // A label that's itself a bare roman numeral (e.g. "ii", "iii") must not
+  // be split — the lazy prefix below would otherwise happily peel a false
+  // "(i)" off the front of it (e.g. "ii" -> "(i)(i)" instead of "(ii)").
+  if(romanOnly.test(label)) return '(' + label + ')';
   const m = String(label).match(/^([a-z]+?)(i{1,3}|iv|vi{0,3}|ix|x{1,3})$/i);
   return m ? '(' + m[1] + ')(' + m[2] + ')' : '(' + label + ')';
 }
