@@ -280,6 +280,17 @@ function computeScoreAgainst(answers, set, manualMarks, excludeManual) {
 function computeGrade(score, gradeBoundaries) {
   if(!gradeBoundaries || !gradeBoundaries.length) return null;
   const sorted = gradeBoundaries.slice().sort((a,b) => b.min - a.min);
-  for(const b of sorted) { if(score >= b.min) return b.grade; }
+  const bottom = sorted[sorted.length - 1];
+  for(const b of sorted) {
+    if(score >= b.min) {
+      // Many boundary tables were only entered down to some grade (e.g. 5.5)
+      // with that grade's minimum set to 0 as a catch-all floor. A score in
+      // that floor band really means "this grade or lower", so say so rather
+      // than over-reporting it. A table that runs all the way down to 1.0
+      // is complete, so its bottom band is shown as-is.
+      if(b === bottom && Number(b.min) === 0 && parseFloat(b.grade) > 1) return '≤' + b.grade;
+      return b.grade;
+    }
+  }
   return null;
 }
