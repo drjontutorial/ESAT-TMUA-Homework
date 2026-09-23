@@ -91,6 +91,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 .msg.success{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;display:block}
 .msg.error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;display:block}
 
+.ptip{position:absolute;transform:translate(-50%,calc(-100% - 12px));background:#0f172a;color:#fff;font-size:12px;line-height:1.45;padding:7px 10px;border-radius:8px;white-space:nowrap;pointer-events:none;box-shadow:0 4px 12px rgba(15,23,42,.25);z-index:5}
 .progress-subject{border:1.5px solid var(--line);border-radius:14px;padding:14px 14px 6px;margin-bottom:12px}
 .progress-subject-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px}
 .progress-subject-name{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--brand)}
@@ -719,23 +720,30 @@ function computeScoreAgainstSet(answers, set, manualMarks) {
   return computeScoreAgainst(answers, set, manualMarks);
 }
 
+// Trend chart: no crowded x-axis text — each paper is a small tick dot on
+// the axis, and hovering (desktop) or tapping (phone) a point shows which
+// paper it was, its date and score. Only the latest score is labelled.
+let __progressChartCounter = 0;
 function buildProgressChartSvg(rows) {
-  const width = 640, height = 240, padTop = 24, padBottom = 46, padLeft = 40, padRight = 16;
+  const width = 380, height = 210, padTop = 28, padBottom = 28, padLeft = 36, padRight = 14;
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
   const stepX = rows.length > 1 ? plotW / (rows.length - 1) : 0;
+  const chartId = 'pchart' + (++__progressChartCounter);
+  const axisY = padTop + plotH;
 
-  const points = rows.map(({set, sub}, i) => {
-    const pct = computeScoreAgainstSet(sub.timedAnswers, set, sub.manualMarks).pct;
+  const points = rows.map((r, i) => {
+    const pct = r.pct != null ? r.pct : computeScoreAgainstSet(r.sub.timedAnswers, r.set, r.sub.manualMarks).pct;
+    const ts = r.ts || reportSubTimestamp(r.sub);
     return {
       x: padLeft + (rows.length > 1 ? i*stepX : plotW/2),
       y: padTop + plotH - (pct/100)*plotH,
       score: pct,
-      label: set.title
+      tip: '<strong>' + escapeHtml(r.set.title) + '</strong><br>' + (ts ? new Date(ts).toLocaleDateString('en-GB') + ' · ' : '') + pct + '%' + (r.grade != null ? ' · Grade ' + r.grade : '')
     };
   });
 
-  let svg = '<svg viewBox="0 0 '+width+' '+height+'" style="width:100%;height:auto;display:block">';
+  let svg = '<svg viewBox="0 0 '+width+' '+height+'" style="width:100%;height:auto;display:block;overflow:visible">';
   [0,25,50,75,100].forEach(v => {
     const y = padTop + plotH - (v/100)*plotH;
     svg += '<line x1="'+padLeft+'" y1="'+y+'" x2="'+(width-padRight)+'" y2="'+y+'" stroke="#e2e8f0" stroke-width="1"/>';
@@ -743,16 +751,40 @@ function buildProgressChartSvg(rows) {
   });
   if(points.length > 1) {
     const linePath = points.map((p,i) => (i===0?'M':'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
-    svg += '<path d="'+linePath+'" fill="none" stroke="#1e40af" stroke-width="2.5"/>';
+    svg += '<path d="'+linePath+'" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linejoin="round"/>';
   }
-  points.forEach(p => {
-    const truncated = p.label.length > 10 ? p.label.slice(0,9)+'…' : p.label;
-    svg += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="5" fill="#1e40af"/>';
-    svg += '<text x="'+p.x.toFixed(1)+'" y="'+(p.y-12).toFixed(1)+'" font-size="11" fill="#1e40af" font-weight="700" text-anchor="middle">'+p.score+'%</text>';
-    svg += '<text x="'+p.x.toFixed(1)+'" y="'+(height-padBottom+18)+'" font-size="10" fill="#64748b" text-anchor="middle">'+truncated+'</text>';
+  points.forEach((p, i) => {
+    // tick dot on the x-axis under each paper
+    svg += '<circle cx="'+p.x.toFixed(1)+'" cy="'+(axisY+12)+'" r="3" fill="#94a3b8"/>';
+    svg += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="4.5" fill="#1e40af" stroke="#fff" stroke-width="1.5"/>';
+    if(i === points.length - 1) {
+      svg += '<text x="'+p.x.toFixed(1)+'" y="'+(p.y-11).toFixed(1)+'" font-size="12" fill="#1e40af" font-weight="800" text-anchor="end" paint-order="stroke" stroke="#fff" stroke-width="4">Latest '+p.score+'%</text>';
+    }
+    // big invisible hit area (whole column) so a finger can hit it easily
+    const hitW = Math.max(14, Math.min(40, stepX || 40));
+    svg += '<rect x="'+(p.x - hitW/2).toFixed(1)+'" y="'+padTop+'" width="'+hitW.toFixed(1)+'" height="'+(plotH+24)+'" fill="transparent" style="cursor:pointer"'
+      + ' data-tip="'+p.tip.replace(/"/g,'&quot;')+'" data-x="'+(p.x/width*100).toFixed(2)+'" data-y="'+(p.y/height*100).toFixed(2)+'"'
+      + ' onmouseenter="showProgressTip(this,\''+chartId+'\')" onclick="showProgressTip(this,\''+chartId+'\')" onmouseleave="hideProgressTip(\''+chartId+'\')"/>';
   });
   svg += '</svg>';
-  return svg;
+  return '<div id="'+chartId+'" style="position:relative">' + svg
+    + '<div class="ptip hidden"></div></div>'
+    + '<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:2px">Tap or hover a dot to see the paper</div>';
+}
+
+function showProgressTip(el, chartId) {
+  const box = document.getElementById(chartId);
+  if(!box) return;
+  const tip = box.querySelector('.ptip');
+  tip.innerHTML = el.getAttribute('data-tip');
+  const x = parseFloat(el.getAttribute('data-x'));
+  tip.style.left = Math.min(Math.max(x, 18), 82) + '%';
+  tip.style.top = el.getAttribute('data-y') + '%';
+  tip.classList.remove('hidden');
+}
+function hideProgressTip(chartId) {
+  const box = document.getElementById(chartId);
+  if(box) box.querySelector('.ptip').classList.add('hidden');
 }
 
 function backToMyPaper() {
