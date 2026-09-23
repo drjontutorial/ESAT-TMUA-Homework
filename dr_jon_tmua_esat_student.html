@@ -91,6 +91,11 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 .msg.success{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;display:block}
 .msg.error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;display:block}
 
+.progress-subject{border:1.5px solid var(--line);border-radius:14px;padding:14px 14px 6px;margin-bottom:12px}
+.progress-subject-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px}
+.progress-subject-name{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--brand)}
+.progress-subject-avg{font-size:20px;font-weight:800;color:var(--brand)}
+.progress-subject-avg small{font-size:11px;font-weight:700;color:var(--muted)}
 .psection-title{font-size:13px;font-weight:800;color:var(--ink,#0f172a);margin:20px 0 10px;display:flex;align-items:center;gap:8px}
 .psection-title:first-child{margin-top:0}
 .psection-count{background:var(--brand-light);color:var(--brand);font-size:11px;padding:2px 8px;border-radius:50px}
@@ -648,6 +653,10 @@ async function renderMyPaperCard() {
 }
 
 // ---- My Progress: chart + history table (mirrors the admin's student-detail view) ----
+// One chart per subject — mixing e.g. Physics and Maths on one line makes
+// the trend meaningless. Only papers with a real result count: auto-marked
+// papers once submitted, Dr Jon-marked (LQ / paper-based) papers only once
+// released (an unreleased one would show a fake low score).
 async function renderMyProgress() {
   const chartEl = document.getElementById('myProgressChart');
   const tableEl = document.getElementById('myProgressTable');
@@ -656,31 +665,45 @@ async function renderMyProgress() {
 
   const setIds = myApprovedSetIds();
   const {ref,get,db} = window.firebaseDB;
+  const subs = await Promise.all(setIds.map(id =>
+    get(ref(db,'submissions/'+id+'/'+studentCode)).then(snap => snap.exists() ? snap.val() : null).catch(() => null)));
   const rows = [];
-  for(const setId of setIds) {
-    const snap = await get(ref(db,'submissions/'+setId+'/'+studentCode));
-    if(snap.exists()) {
-      const sub = snap.val();
-      if(sub.timedSubmittedAt) rows.push({ setId, set: homeworkSets[setId], sub });
-    }
-  }
-  rows.sort((a,b) => a.sub.timedSubmittedAt - b.sub.timedSubmittedAt);
+  setIds.forEach((setId, i) => {
+    const sub = subs[i], set = homeworkSets[setId];
+    if(!sub || !set) return;
+    const humanMarked = (isLQPaperType(set.paperType) && !set.isTutorial) || isPaperOnlySet(set);
+    if(humanMarked ? !sub.resultsReleased : !sub.timedSubmittedAt) return;
+    const ts = reportSubTimestamp(sub);
+    const live = computeScoreAgainstSet(sub.timedAnswers, set, sub.manualMarks);
+    const grade = isWpcPaperType(set.paperType) ? wpcGradeFromPct(live.pct) : computeGrade(live.score, set.gradeBoundaries);
+    rows.push({ setId, set, sub, ts, pct: live.pct, grade });
+  });
+  rows.sort((a,b) => a.ts - b.ts);
 
   if(rows.length === 0) {
     chartEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Complete a paper to start seeing your progress here.</div>';
-    tableEl.innerHTML = '';
     return;
   }
 
-  const avgPct = Math.round(rows.reduce((sum,r) => sum + computeScoreAgainstSet(r.sub.timedAnswers, r.set, r.sub.manualMarks).pct, 0) / rows.length * 10) / 10;
-  chartEl.innerHTML = '<div class="progress-score-summary"><div class="big">'+avgPct+'%</div><div class="small">Average across '+rows.length+' completed paper'+(rows.length>1?'s':'')+'</div></div>' + buildProgressChartSvg(rows);
+  let chartsHtml = '';
+  PAPER_TYPE_GROUPS.forEach(group => {
+    const g = rows.filter(r => paperTypeOf(r.set) === group.key);
+    if(!g.length) return;
+    const avg = Math.round(g.reduce((sum,r) => sum + r.pct, 0) / g.length * 10) / 10;
+    chartsHtml += '<div class="progress-subject">'
+      + '<div class="progress-subject-head"><span class="progress-subject-name">' + escapeHtml(group.label) + '</span>'
+      + '<span class="progress-subject-avg">' + avg + '% <small>avg of ' + g.length + '</small></span></div>'
+      + (g.length > 1 ? buildProgressChartSvg(g)
+          : '<div style="font-size:12.5px;color:var(--muted);padding:6px 0 4px">One paper so far — your trend line appears after the next one.</div>')
+      + '</div>';
+  });
+  chartEl.innerHTML = chartsHtml;
 
   let tableHtml = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase"><th style="padding:8px 4px">Paper</th><th style="padding:8px 4px">Date</th><th style="padding:8px 4px;text-align:right">Score</th><th style="padding:8px 4px;text-align:right">Grade</th></tr></thead><tbody>';
-  rows.slice().reverse().forEach(({set, sub}) => {
-    const live = computeScoreAgainstSet(sub.timedAnswers, set, sub.manualMarks);
-    const date = new Date(sub.timedSubmittedAt).toLocaleDateString('en-GB');
-    const grade = computeGrade(live.score, set.gradeBoundaries);
-    tableHtml += '<tr style="border-top:1px solid var(--line)"><td style="padding:9px 4px;font-weight:700">'+set.title+'</td><td style="padding:9px 4px;color:var(--muted)">'+date+'</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+live.pct+'%</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+(grade!==null?grade:'—')+'</td></tr>';
+  rows.slice().reverse().forEach(r => {
+    const date = r.ts ? new Date(r.ts).toLocaleDateString('en-GB') : '';
+    const subj = (PAPER_TYPE_GROUPS.find(g => g.key === paperTypeOf(r.set)) || {}).label || '';
+    tableHtml += '<tr style="border-top:1px solid var(--line)"><td style="padding:9px 4px;font-weight:700">'+escapeHtml(r.set.title)+'<div style="font-size:10.5px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.4px">'+escapeHtml(subj)+'</div></td><td style="padding:9px 4px;color:var(--muted)">'+date+'</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+r.pct+'%</td><td style="padding:9px 4px;text-align:right;font-weight:800;color:var(--brand)">'+(r.grade!=null?r.grade:'—')+'</td></tr>';
   });
   tableHtml += '</tbody></table>';
   tableEl.innerHTML = tableHtml;
