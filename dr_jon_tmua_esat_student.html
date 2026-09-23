@@ -1492,6 +1492,16 @@ function commitLQAnswer(leafKey, value) {
 // data URI in currentAnswers[leafKey] exactly like any other leaf value.
 // Kept physically small (320x220) rather than compressed lossily, so a
 // simple line drawing stays a few KB — comfortably small for a free-tier DB.
+// Draw a sketch background without distorting it: scale to fit inside the
+// canvas (keeping its aspect ratio), centred horizontally and pinned to the
+// top, so a wide strip like an orbital-box row keeps square boxes and
+// leaves writing space underneath.
+function drawSketchBgContain(ctx, canvas, img) {
+  const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+  const w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+  ctx.drawImage(img, (canvas.width - w) / 2, 8 * (h < canvas.height - 8 ? 1 : 0), w, h);
+}
+
 function initLQSketchCanvas(leafKey, canvasId, existingDataUrl, bgUrl) {
   const canvas = document.getElementById(canvasId);
   if(!canvas) return;
@@ -1507,7 +1517,7 @@ function initLQSketchCanvas(leafKey, canvasId, existingDataUrl, bgUrl) {
     img.src = existingDataUrl;
   } else if(bgUrl) {
     const bg = new Image();
-    bg.onload = () => ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+    bg.onload = () => drawSketchBgContain(ctx, canvas, bg);
     bg.src = bgUrl;
   }
   let drawing = false;
@@ -1547,7 +1557,7 @@ function clearLQSketch(leafKey) {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     const bgUrl = canvas.dataset.bgUrl;
-    if(bgUrl) { const bg = new Image(); bg.onload = () => ctx.drawImage(bg, 0, 0, canvas.width, canvas.height); bg.src = bgUrl; }
+    if(bgUrl) { const bg = new Image(); bg.onload = () => drawSketchBgContain(ctx, canvas, bg); bg.src = bgUrl; }
   }
   delete currentAnswers[leafKey];
   logEvent('answer', { question: leafKey, answer: '[sketch cleared]', mode: currentMode });
