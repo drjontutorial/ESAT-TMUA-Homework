@@ -570,7 +570,7 @@ async function renderHomepage() {
         // Paper-only (scan-based) papers: no timedSubmittedAt — the student's
         // timer start and "I've sent my scan" press are the only signals.
         if(set && isPaperOnlySet(set) && (sub.paperStartedAt || sub.paperSentAt) && !sub.resultsReleased) {
-          const limitMs = (set.timeLimitMinutes || 0) * 60000;
+          const limitMs = Math.max(set.timeLimitMinutes || 0, 60) * 60000; // Dr Jon: within 60 min of start = on time
           const deadline = (sub.paperStartedAt || 0) + limitMs;
           let paperNote;
           if(sub.paperSentAt) {
@@ -1419,7 +1419,7 @@ let resultsSearchTerm = '';
 function renderResults(setId) {
   const set = homeworkSets[setId];
   if(!set) return;
-  const subs = Object.entries(allSubmissions).filter(([code,s]) => s.timedSubmittedAt);
+  const subs = Object.entries(allSubmissions).filter(([code,s]) => subIsScorable(set, s));
 
   // Always recompute from the live answer key rather than trusting the
   // stored score fields — if the key gets corrected after students submit,
@@ -1427,7 +1427,7 @@ function renderResults(setId) {
   const withLiveScores = subs.map(([code,s]) => {
     const live = computeScoreAgainst(s.timedAnswers, set, s.manualMarks);
     const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set, s.manualMarks, true) : null;
-    return { code, s, live, overtimeLive, stale: live.score !== s.timedScore };
+    return { code, s, live, overtimeLive, stale: s.timedScore != null && live.score !== s.timedScore };
   });
 
   const scores = withLiveScores.map(x => x.live.pct);
@@ -1488,10 +1488,11 @@ function renderResults(setId) {
   filtered.sort((a,b) => b.live.pct - a.live.pct).forEach(({code, s, live, overtimeLive, stale}) => {
     const name = studentName(code) || '—';
     const pillClass = live.pct>=70?'good':live.pct>=50?'mid':'bad';
-    const grade = computeGrade(live.score, set.gradeBoundaries);
+    const grade = gradeForSet(set, live);
     const gradeCell = grade !== null ? '<span class="pill mid">'+grade+'</span>' : '—';
     const overtimeCell = overtimeLive ? '<span class="pill mid">'+overtimeLive.pct+'%</span>' : '<span class="pill pending">—</span>';
-    const ts = new Date(s.timedSubmittedAt).toLocaleString('en-GB');
+    const tsVal = s.timedSubmittedAt || s.paperSentAt;
+    const ts = tsVal ? new Date(tsVal).toLocaleString('en-GB') : 'handed in (time not recorded)';
     const flagTag = (s.flaggedQuestions && s.flaggedQuestions.length) ? ' <span title="Has questions flagged for review">🚩</span>' : '';
     const pendingTag = live.pending ? ' <span style="color:var(--gold);font-weight:800" title="Parts still need your marking">⏳ ' + live.pending + '</span>' : '';
     html += '<tr onclick="showBreakdown(\''+code+'\')"><td><strong>'+code+'</strong>'+flagTag+'</td><td>'+name+'</td><td>'+live.score+' / '+live.total+(stale?'<span class="recalc-flag">recalculated</span>':'')+'</td><td><span class="pill '+pillClass+'">'+live.pct+'%</span>'+pendingTag+'</td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td><td>'+ts+'</td></tr>';
@@ -1515,13 +1516,14 @@ function onResultsSearch(val) {
 function exportResultsCsv() {
   const set = homeworkSets[currentResultsSetId];
   if(!set) return;
-  const subs = Object.entries(allSubmissions).filter(([code,s]) => s.timedSubmittedAt);
+  const subs = Object.entries(allSubmissions).filter(([code,s]) => subIsScorable(set, s));
   let csv = 'Code,Name,Timed Score,Timed Total,Timed %,Overtime Score,Overtime %,Submitted At\n';
   subs.forEach(([code,s]) => {
     const live = computeScoreAgainst(s.timedAnswers, set, s.manualMarks);
     const overtimeLive = s.overtimeSubmittedAt ? computeScoreAgainst(s.overtimeAnswers, set, s.manualMarks, true) : null;
     const name = studentName(code).replace(/,/g,' ');
-    const ts = new Date(s.timedSubmittedAt).toLocaleString('en-GB');
+    const tsVal = s.timedSubmittedAt || s.paperSentAt;
+    const ts = tsVal ? new Date(tsVal).toLocaleString('en-GB') : '';
     csv += [code, name, live.score, live.total, live.pct, overtimeLive?overtimeLive.score:'', overtimeLive?overtimeLive.pct:'', ts].join(',') + '\n';
   });
   const blob = new Blob([csv], {type:'text/csv'});
@@ -2297,7 +2299,7 @@ async function openStudentDetail(code) {
       rows.push({ setId, set, sub });
     }
   });
-  rows.sort((a,b) => (a.sub.startedAt||0) - (b.sub.startedAt||0));
+  rows.sort((a,b) => subStartTs(a.sub) - subStartTs(b.sub));
 
   const approvedTitles = Object.keys(student.approvedSetIds || {}).filter(id => student.approvedSetIds[id] && homeworkSets[id]).map(id => homeworkSets[id].title);
   const approvedText = approvedTitles.length ? approvedTitles.join(', ') : '— none approved yet —';
@@ -2317,9 +2319,15 @@ function renderStudentDetailTable(code, rows) {
   }
   let html = '<table><thead><tr><th>Paper</th><th>Started</th><th>Timed Submitted</th><th>Timed %</th><th>Grade</th><th>Overtime %</th></tr></thead><tbody>';
   rows.forEach(({setId, set, sub}) => {
-    const started = sub.startedAt ? new Date(sub.startedAt).toLocaleString('en-GB') : '—';
-    const submitted = sub.timedSubmittedAt ? new Date(sub.timedSubmittedAt).toLocaleString('en-GB') : '<span style="color:var(--gold)">not submitted</span>';
-    const live = sub.timedSubmittedAt ? computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks) : null;
+    const startTs = subStartTs(sub);
+    const started = startTs ? new Date(startTs).toLocaleString('en-GB') : '—';
+    const onTimeTag = (sub.claudeRecord && sub.claudeRecord.onTime === true) ? ' <span style="color:#047857;font-weight:800">✓ on time</span>'
+      : (sub.claudeRecord && sub.claudeRecord.onTime === false) ? ' <span style="color:#b91c1c;font-weight:800">late</span>' : '';
+    const submitted = sub.timedSubmittedAt ? new Date(sub.timedSubmittedAt).toLocaleString('en-GB')
+      : sub.paperSentAt ? new Date(sub.paperSentAt).toLocaleString('en-GB') + onTimeTag
+      : (isPaperOnlySet(set) && sub.resultsReleased) ? 'handed in (time not recorded)' + onTimeTag
+      : '<span style="color:var(--gold)">not submitted</span>';
+    const live = subIsScorable(set, sub) ? computeScoreAgainst(sub.timedAnswers, set, sub.manualMarks) : null;
     const overtimeLive = sub.overtimeSubmittedAt ? computeScoreAgainst(sub.overtimeAnswers, set, sub.manualMarks, true) : null;
     const pillClass = live ? (live.pct>=70?'good':live.pct>=50?'mid':'bad') : null;
     const timedCell = live ? '<span class="pill '+pillClass+'">'+live.pct+'%</span>' : '—';
@@ -2328,7 +2336,7 @@ function renderStudentDetailTable(code, rows) {
     // (e.g. only completed the paper in overtime) — otherwise a genuinely
     // completed paper would show no grade at all just because Timed is blank.
     const gradeSource = live || overtimeLive;
-    const grade = gradeSource ? computeGrade(gradeSource.score, set.gradeBoundaries) : null;
+    const grade = gradeSource ? gradeForSet(set, gradeSource) : null;
     const gradeCell = grade !== null ? '<span class="pill mid">'+grade+(!live && overtimeLive ? ' (OT)' : '')+'</span>' : '—';
     const overtimeCell = overtimeLive ? '<span class="pill mid">'+overtimeLive.pct+'%</span>' : '<span class="pill pending">—</span>';
     html += '<tr onclick="showBreakdownFor(\''+setId+'\',\''+code+'\')"><td><strong>'+set.title+'</strong></td><td>'+started+'</td><td>'+submitted+'</td><td>'+timedCell+'</td><td>'+gradeCell+'</td><td>'+overtimeCell+'</td></tr>';
@@ -2339,7 +2347,7 @@ function renderStudentDetailTable(code, rows) {
 
 function renderStudentPerformanceChart(rows) {
   const container = document.getElementById('studentDetailChart');
-  const submittedRows = rows.filter(r => r.sub.timedSubmittedAt);
+  const submittedRows = rows.filter(r => subIsScorable(r.set, r.sub));
   if(submittedRows.length === 0) {
     container.innerHTML = '<div class="empty">No completed papers yet to chart.</div>';
     return;

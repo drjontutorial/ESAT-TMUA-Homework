@@ -36,6 +36,24 @@ function isWpcPaperType(t) { return t === 'wpc_physics' || t === 'wpc_maths' || 
 
 // Paper-only submissions have no timedSubmittedAt — fall back to the
 // release/report time so sorting and dates still work.
+// Paper-only (scan-based) submissions never get timedSubmittedAt/timedAnswers
+// — they carry paperStartedAt/paperSentAt and only manualMarks. These helpers
+// let every results table treat both kinds the same way.
+function subStartTs(sub) { return (sub && (sub.startedAt || sub.paperStartedAt)) || 0; }
+function subIsScorable(set, sub) {
+  if(!sub) return false;
+  if(sub.timedSubmittedAt) return true;
+  return isPaperOnlySet(set) && !!(sub.resultsReleased || sub.paperSentAt || (sub.manualMarks && Object.keys(sub.manualMarks).length));
+}
+// Grade for any paper: its own boundary table if it has one, otherwise WPC's
+// fixed percentage bands for WPC papers, otherwise no grade.
+function gradeForSet(set, live) {
+  if(!live) return null;
+  if(set.gradeBoundaries && set.gradeBoundaries.length) return computeGrade(live.score, set.gradeBoundaries);
+  if(isWpcPaperType(set.paperType)) return wpcGradeFromPct(live.pct);
+  return null;
+}
+
 function reportSubTimestamp(sub) {
   return (sub && (sub.timedSubmittedAt || sub.resultsReleasedAt || (sub.report && sub.report.generatedAt))) || 0;
 }
