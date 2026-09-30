@@ -1226,7 +1226,10 @@ function renderCurrentQuestion() {
         // read back/saved — an external/cross-origin image would taint it).
         const canvasId = 'lqsketch_'+leafKey;
         const bgUrl = (currentSet.sketchBg || {})[leafKey] || '';
-        const canvasSize = bgUrl ? 'width="360" height="240"' : 'width="320" height="220"';
+        // Background sketches get a 720px-wide canvas (shown shrunk to fit the
+        // screen) so fine detail like graph-paper grids stays drawable; the
+        // height is matched to the image once it loads.
+        const canvasSize = bgUrl ? 'width="720" height="480"' : 'width="320" height="220"';
         html += '<div style="margin-bottom:16px"><label style="display:block;font-weight:800;font-size:14px;margin-bottom:8px;color:var(--brand)">'+rowLabel+'</label>'
           + '<canvas id="'+canvasId+'" '+canvasSize+' style="border:1.5px solid var(--line);border-radius:8px;background:#fff;touch-action:none;display:block;max-width:100%;cursor:crosshair"></canvas>'
           + '<div style="margin-top:8px"><button type="button" onclick="clearLQSketch(\''+leafKey+'\')" style="padding:8px 14px;font-size:12px;font-weight:800;border:1.5px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-family:\'DM Sans\',sans-serif">🗑️ Clear</button> <span style="font-size:11px;color:var(--muted)">Draw with mouse or finger'+(bgUrl?' — label directly on the diagram':'')+'</span></div>'
@@ -1506,18 +1509,26 @@ function initLQSketchCanvas(leafKey, canvasId, existingDataUrl, bgUrl) {
   const canvas = document.getElementById(canvasId);
   if(!canvas) return;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // Resizing a canvas wipes it and resets the pen, so this re-applies both.
+  const resetCanvas = (height) => {
+    if(height) canvas.height = height;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#0f172a'; ctx.lineWidth = bgUrl ? 3 : 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  };
+  // Height for an image of this shape at the canvas's width — at least 240
+  // so a thin strip (e.g. an orbital-box row) still leaves writing room.
+  const fitHeight = img => Math.max(240, Math.round(canvas.width * img.naturalHeight / img.naturalWidth));
+  resetCanvas();
   if(bgUrl) canvas.dataset.bgUrl = bgUrl;
   // existingDataUrl (a previous save) already has any background baked in,
   // so it fully replaces a fresh bgUrl draw rather than needing to layer.
   if(existingDataUrl) {
     const img = new Image();
-    img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    img.onload = () => { if(bgUrl) resetCanvas(fitHeight(img)); ctx.drawImage(img, 0, 0, canvas.width, canvas.height); };
     img.src = existingDataUrl;
   } else if(bgUrl) {
     const bg = new Image();
-    bg.onload = () => drawSketchBgContain(ctx, canvas, bg);
+    bg.onload = () => { resetCanvas(fitHeight(bg)); drawSketchBgContain(ctx, canvas, bg); };
     bg.src = bgUrl;
   }
   let drawing = false;
@@ -1539,7 +1550,9 @@ function initLQSketchCanvas(leafKey, canvasId, existingDataUrl, bgUrl) {
 }
 
 function commitLQSketch(leafKey, canvas) {
-  const dataUrl = canvas.toDataURL('image/png');
+  // Background sketches (a detailed figure + the student's pen) compress far
+  // better as JPEG than PNG; plain blank-canvas sketches stay PNG.
+  const dataUrl = canvas.dataset.bgUrl ? canvas.toDataURL('image/jpeg', 0.85) : canvas.toDataURL('image/png');
   // Defensive cap — a canvas this size drawing simple lines should never get
   // near this, but never let something huge reach a free-tier database.
   if(dataUrl.length > 300000) {
@@ -1837,7 +1850,7 @@ function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
         const rawModelAnswer = (set.answerKey||{})[leafKey] || '';
         const spec = parseLQAnswerSpec(rawModelAnswer);
         const given = isSketch
-          ? (rawGiven && rawGiven.startsWith('data:image') ? '<img src="'+rawGiven+'" style="max-width:220px;display:block;margin-top:4px;border:1px solid var(--line);border-radius:6px">' : (rawGiven ? escapeHtml(rawGiven) : '—'))
+          ? (rawGiven && rawGiven.startsWith('data:image') ? '<img src="'+rawGiven+'" style="width:100%;max-width:520px;display:block;margin-top:4px;border:1px solid var(--line);border-radius:6px">' : (rawGiven ? escapeHtml(rawGiven) : '—'))
           : isTable ? (rawGiven ? lqRenderFilledTableHtml(rawModelAnswer, rawGiven) : '—')
           : spec.template ? (rawGiven ? lqRenderFilledTemplate(spec.template, rawGiven) : '—')
           : (rawGiven ? escapeHtml(rawGiven) : '—');

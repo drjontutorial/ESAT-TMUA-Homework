@@ -115,7 +115,7 @@ function buildReportAccordionHtml(answers, set, manualMarks) {
       }
 
       const givenDisplay = isSketch
-        ? (given && given.startsWith('data:image') ? '<img src="'+given+'" style="max-width:220px;display:block;margin-top:6px;border:1px solid var(--line);border-radius:6px">' : (given ? escapeHtml(given) : '—'))
+        ? (given && given.startsWith('data:image') ? '<img src="'+given+'" style="width:100%;max-width:520px;display:block;margin-top:6px;border:1px solid var(--line);border-radius:6px">' : (given ? escapeHtml(given) : '—'))
         : isTable ? (given ? lqRenderFilledTableHtml(modelAnswerRaw, given) : '—')
         : spec.template ? (given ? lqRenderFilledTemplate(spec.template, given) : '—')
         : (given ? escapeHtml(given) : '—');
