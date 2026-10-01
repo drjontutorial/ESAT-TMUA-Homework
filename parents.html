@@ -131,7 +131,10 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
     <h1 id="headerTitle">Dr Jon's Test Prep Hub</h1>
     <p id="headerSub">For Parents</p>
   </div>
-  <button class="logout-btn hidden" id="logoutBtn" onclick="parentLogout()">↩</button>
+  <div style="display:flex;gap:8px">
+    <button class="logout-btn hidden" id="langBtn" onclick="openLangPicker()" title="Language / 語言">🌐</button>
+    <button class="logout-btn hidden" id="logoutBtn" onclick="parentLogout()">↩</button>
+  </div>
 </header>
 
 <!-- LOGIN -->
@@ -148,8 +151,9 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 <div class="hidden" id="langCard">
   <div class="card">
     <h2>Choose a language</h2>
-    <div class="lang-note">This choice only affects the text on this page and your own report below — your child's own report (further down) is always shown in English, exactly as they see it.</div>
+    <div class="lang-note">This choice only affects the text on this page and your own report below — your child's own report (further down) is always shown in English, exactly as they see it. You can change it any time with the 🌐 button at the top.</div>
     <div class="lang-option" onclick="chooseParentLang('en')">🇬🇧 English</div>
+    <div class="lang-option" onclick="chooseParentLang('zh-Hant')">🇭🇰 繁體中文</div>
     <div class="lang-option" onclick="chooseParentLang('zh-Hans')">🇨🇳 简体中文</div>
   </div>
 </div>
@@ -207,8 +211,43 @@ const PARENT_I18N = {
     back: '‹ 返回',
     loading: '加载中…',
     noParentReport: '此试卷暂时未有文字报告 —— 下方的分数与逐题详情仍可查看。'
+  },
+  'zh-Hant': {
+    headerSub: '家長專區',
+    homeTitle: '孩子的報告',
+    homeSub: '點擊一份試卷查看報告。',
+    noReports: '暫時未有已發佈的報告 —— Dr Jon 批改並發佈後會顯示在這裡。',
+    parentReportTitle: '給您的報告',
+    studentReportTitle: '孩子的完整報告',
+    back: '‹ 返回',
+    loading: '載入中…',
+    noParentReport: '此試卷暫時未有文字報告 —— 下方的分數與逐題詳情仍可查看。'
   }
 };
+
+// Parent reports are written in Simplified Chinese; a parent who picked
+// Traditional gets them converted on the fly (Hong Kong standard) with
+// OpenCC. The ~1 MB converter is only downloaded when actually needed, and
+// if it fails to load the original text is shown rather than nothing.
+let __toHantPromise = null;
+function loadHantConverter() {
+  if(!__toHantPromise) {
+    __toHantPromise = new Promise(resolve => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/cn2t.js';
+      sc.onload = () => { try { resolve(OpenCC.Converter({ from: 'cn', to: 'hk' })); } catch(e) { resolve(null); } };
+      sc.onerror = () => resolve(null);
+      document.head.appendChild(sc);
+    });
+  }
+  return __toHantPromise;
+}
+async function toParentScript(text, sourceLang) {
+  if(parentLang !== 'zh-Hant' || !text || sourceLang === 'en' || sourceLang === 'zh-Hant') return text;
+  if(!/[\u4e00-\u9fff]/.test(text)) return text;
+  const convert = await loadHantConverter();
+  return convert ? convert(text) : text;
+}
 function t(key) { return (PARENT_I18N[parentLang] && PARENT_I18N[parentLang][key]) || PARENT_I18N.en[key] || key; }
 
 function showMsg(id, text, cls) {
@@ -234,6 +273,7 @@ async function loginParent() {
     parentRecord = snap.val();
     document.getElementById('loginCard').classList.add('hidden');
     document.getElementById('logoutBtn').classList.remove('hidden');
+    document.getElementById('langBtn').classList.remove('hidden');
     if(parentRecord.parentLang) {
       parentLang = parentRecord.parentLang;
       enterParentHome();
@@ -253,9 +293,17 @@ async function chooseParentLang(lang) {
   enterParentHome();
 }
 
+// Re-open the language picker at any time (not just first login).
+function openLangPicker() {
+  document.getElementById('homeCard').classList.add('hidden');
+  document.getElementById('reportScreen').classList.add('hidden');
+  document.getElementById('langCard').classList.remove('hidden');
+}
+
 function parentLogout() {
   parentCode = ''; parentRecord = null; parentLang = 'en';
   document.getElementById('logoutBtn').classList.add('hidden');
+  document.getElementById('langBtn').classList.add('hidden');
   document.getElementById('homeCard').classList.add('hidden');
   document.getElementById('reportScreen').classList.add('hidden');
   document.getElementById('langCard').classList.add('hidden');
@@ -266,6 +314,7 @@ function parentLogout() {
 }
 
 function applyChrome() {
+  document.documentElement.lang = parentLang;
   document.getElementById('headerSub').textContent = t('headerSub');
   document.getElementById('homeTitle').textContent = t('homeTitle');
   document.getElementById('homeSub').textContent = t('homeSub');
@@ -335,7 +384,8 @@ async function openParentReport(setId) {
   // here, only report (student) and parentReport.
   const pr = sub.parentReport;
   let parentHtml = '<div class="parent-report-title">' + t('parentReportTitle') + '</div>';
-  parentHtml += pr && pr.text ? '<div class="parent-report-card">' + escapeHtml(pr.text) + '</div>' : '<p class="sub">' + t('noParentReport') + '</p>';
+  const prText = pr && pr.text ? await toParentScript(pr.text, pr.lang) : '';
+  parentHtml += prText ? '<div class="parent-report-card">' + escapeHtml(prText) + '</div>' : '<p class="sub">' + t('noParentReport') + '</p>';
   document.getElementById('parentReportContainer').innerHTML = parentHtml;
 
   // Full student report — identical component the student themselves sees,
