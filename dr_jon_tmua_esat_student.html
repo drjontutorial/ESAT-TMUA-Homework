@@ -330,6 +330,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
     <h2 id="startTitle">—</h2>
     <p class="sub" id="startMeta">—</p>
     <div class="msg" id="startWarnMsg"></div>
+    <div class="hidden" id="startMsNote" style="background:var(--brand-light);color:var(--brand);font-weight:700;font-size:13px;border-radius:10px;padding:10px 12px;margin-bottom:12px">📥 Once you submit, the mark scheme will be available to download.</div>
     <button class="btn" onclick="beginTimedTest()">✓ Start Timer & Open My Paper</button>
     <p class="sub" style="text-align:center;margin-top:10px">📄 This opens your paper in a <strong>new browser tab</strong> — it is not a download. If nothing appears, check your other browser tabs (or your pop-up blocker).</p>
   </div>
@@ -884,6 +885,9 @@ async function openSet(setId) {
     document.getElementById('startMeta').textContent = currentSet.totalQuestions + ' questions • ' + currentSet.timeLimitMinutes + ' minute time limit' + optionsPart;
     document.getElementById('tutorialIntroBox').classList.toggle('hidden', !currentSet.isTutorial);
     document.getElementById('normalWarningBox').classList.toggle('hidden', !!currentSet.isTutorial);
+    // Auto-marked papers with a mark scheme show it straight after submitting
+    // (WPC/LQ papers wait for Dr Jon to release), so tell the student up front.
+    document.getElementById('startMsNote').classList.toggle('hidden', !(currentSet.markSchemeUrl && !isLQPaperType(currentSet.paperType)));
     showPaperReadiness();
     document.getElementById('warningScreen').classList.remove('hidden');
     return;
