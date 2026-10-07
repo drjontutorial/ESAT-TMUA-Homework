@@ -347,6 +347,8 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
     <p class="sub" style="font-size:14px;line-height:1.6;text-align:left">📝 Do this paper <strong>on paper or iPad</strong>. <strong>The timer starts when you press Download</strong> and can't be reset. Scan your work and <strong>send it to Dr Jon before the timer ends</strong>, then press "I've sent my scan".</p>
     <a class="btn" id="paperOnlyDownloadBtn" href="#" target="_blank" rel="noopener" onclick="paperOnlyDownloadClick(event)" style="display:block;text-align:center;text-decoration:none">📥 Download Question Paper</a>
     <button class="btn warn hidden" id="paperOnlySentBtn" onclick="paperOnlyMarkSent()" style="margin-top:10px">✅ I've sent my scan</button>
+    <div class="hidden" id="paperOnlyMsNote" style="background:var(--brand-light);color:var(--brand);font-weight:700;font-size:13px;border-radius:10px;padding:10px 12px;margin-top:12px">📥 Once you've sent your scan (or when time runs out), the mark scheme will be available to download here.</div>
+    <a class="btn hidden" id="paperOnlyMsBtn" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;margin-top:10px">📥 Download Mark Scheme</a>
   </div>
 </div>
 
@@ -361,6 +363,7 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
     </ul>
   </div>
   <button class="btn warn" onclick="beginOvertime()">Continue to overtime answers</button>
+  <a class="btn hidden" id="overtimeMsBtn" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;margin-top:10px">📥 Download Mark Scheme</a>
 </div>
 
 <!-- QUESTIONS (one at a time, exam-style) -->
@@ -802,16 +805,42 @@ function backToMyPaper() {
 // ---- Paper-only (scan-based) papers: timer starts on first Download ----
 let paperOnlySub = null, paperOnlyInterval = null;
 
+// Mark scheme availability. WPC and IMC papers (Dr Jon's rule): as soon as
+// the student has submitted, or their time has run out — no need to wait
+// for release. Other papers keep the old rule (auto-marked: after submit;
+// LQ: after Dr Jon releases).
+function msOpensOnSubmit(set) { return isWpcPaperType(set.paperType) || set.paperType === 'imc'; }
+function markSchemeAvailable(set, sub) {
+  if(!set || !set.markSchemeUrl || !sub) return false;
+  if(sub.resultsReleased) return true;
+  const limitMs = (set.timeLimitMinutes || 0) * 60000;
+  if(msOpensOnSubmit(set)) {
+    if(isPaperOnlySet(set)) return !!sub.paperSentAt || (!!sub.paperStartedAt && serverNow() >= sub.paperStartedAt + limitMs);
+    return !!sub.timedSubmittedAt || (!!sub.startedAt && serverNow() >= sub.startedAt + limitMs);
+  }
+  return !!sub.timedSubmittedAt && !isLQPaperType(set.paperType);
+}
+
 function renderPaperOnlyTimer() {
   clearInterval(paperOnlyInterval);
   const timerEl = document.getElementById('paperOnlyTimer');
   const statusEl = document.getElementById('paperOnlyStatus');
   const sentBtn = document.getElementById('paperOnlySentBtn');
   const started = paperOnlySub && paperOnlySub.paperStartedAt;
+  const msBtnPO = document.getElementById('paperOnlyMsBtn');
+  const msNotePO = document.getElementById('paperOnlyMsNote');
+  const refreshMs = () => {
+    const avail = markSchemeAvailable(currentSet, paperOnlySub);
+    msBtnPO.classList.toggle('hidden', !avail);
+    if(avail) msBtnPO.href = currentSet.markSchemeUrl;
+    msNotePO.classList.toggle('hidden', avail || !(currentSet.markSchemeUrl && msOpensOnSubmit(currentSet)));
+  };
+  refreshMs();
   if(!started) { timerEl.classList.add('hidden'); statusEl.textContent = ''; sentBtn.classList.add('hidden'); return; }
   timerEl.classList.remove('hidden');
   const deadline = started + currentSet.timeLimitMinutes * 60000;
   const tick = () => {
+    refreshMs();
     const sent = paperOnlySub && paperOnlySub.paperSentAt;
     const left = Math.max(0, Math.ceil((deadline - serverNow()) / 1000));
     timerEl.textContent = String(Math.floor(left/60)).padStart(2,'0') + ':' + String(left%60).padStart(2,'0');
@@ -887,7 +916,11 @@ async function openSet(setId) {
     document.getElementById('normalWarningBox').classList.toggle('hidden', !!currentSet.isTutorial);
     // Auto-marked papers with a mark scheme show it straight after submitting
     // (WPC/LQ papers wait for Dr Jon to release), so tell the student up front.
-    document.getElementById('startMsNote').classList.toggle('hidden', !(currentSet.markSchemeUrl && !isLQPaperType(currentSet.paperType)));
+    const msNote = document.getElementById('startMsNote');
+    msNote.classList.toggle('hidden', !(currentSet.markSchemeUrl && (msOpensOnSubmit(currentSet) || !isLQPaperType(currentSet.paperType))));
+    msNote.textContent = msOpensOnSubmit(currentSet)
+      ? '📥 Once you submit (or when time runs out), the mark scheme will be available to download.'
+      : '📥 Once you submit, the mark scheme will be available to download.';
     showPaperReadiness();
     document.getElementById('warningScreen').classList.remove('hidden');
     return;
@@ -928,6 +961,12 @@ async function openSet(setId) {
       backToMyPaper();
       return;
     }
+    // Time ran out while away: the timed attempt is now final, so the mark
+    // scheme opens up here too (same rule as the results screen).
+    const otMs = document.getElementById('overtimeMsBtn');
+    const otAvail = !!currentSet.markSchemeUrl && (msOpensOnSubmit(currentSet) || !isLQPaperType(currentSet.paperType));
+    otMs.classList.toggle('hidden', !otAvail);
+    if(otAvail) otMs.href = currentSet.markSchemeUrl;
     document.getElementById('overtimeWarningScreen').classList.remove('hidden');
   } else {
     // resume timed session with remaining time
@@ -1812,7 +1851,7 @@ function showResults(sub, showOvertimeToo) {
   // hand a WPC/LQ student the answers before Dr Jon's review) — non-LQ/
   // tutorial papers never gate their results at all, so always fine there.
   const msUrl = liveSet.markSchemeUrl;
-  const showMs = !!msUrl && (!isLQ || released);
+  const showMs = !!msUrl && (msOpensOnSubmit(liveSet) || !isLQ || released);
   const msBtn = document.getElementById('markSchemeBtn');
   msBtn.classList.toggle('hidden', !showMs);
   if(showMs) msBtn.href = msUrl;
