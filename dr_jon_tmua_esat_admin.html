@@ -238,8 +238,11 @@ tbody tr:hover{background:#f8fafc}
       </div>
 
       <div class="card">
-        <h2>All Students</h2>
-        <div id="studentsListContainer"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <h2 style="margin:0">All Students</h2>
+          <label id="showHiddenStudentsWrap" style="font-size:12px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="showHiddenStudents" onchange="renderStudentsList()" style="width:auto"> <span id="showHiddenStudentsLabel">Show hidden students</span></label>
+        </div>
+        <div id="studentsListContainer" style="margin-top:12px"></div>
       </div>
     </div>
 
@@ -2173,8 +2176,24 @@ function enterAsParent(code) {
   window.open('parents.html?code=' + encodeURIComponent(code) + '&pwd=' + encodeURIComponent(s.password), '_blank');
 }
 
+// Students who have left can be hidden (students/{code}/hidden = true). Their
+// data, papers and login are untouched — they just drop out of this list and
+// the bulk-assign checklist until "Show hidden students" is ticked.
+async function setStudentHidden(code, hidden) {
+  const {ref,update,db} = window.firebaseDB;
+  try {
+    await update(ref(db,'students/'+code), { hidden: hidden ? true : null });
+  } catch(e) { alert('Could not save: ' + e); }
+}
+
 function renderStudentsList() {
-  const entries = Object.entries(students).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+  const all = Object.entries(students).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+  const nHidden = all.filter(([c,s]) => s.hidden).length;
+  const showHidden = !!(document.getElementById('showHiddenStudents') || {}).checked;
+  const lbl = document.getElementById('showHiddenStudentsLabel');
+  if(lbl) lbl.textContent = 'Show hidden students (' + nHidden + ')';
+  // hidden ones go last when shown
+  const entries = all.filter(([c,s]) => showHidden || !s.hidden).sort((a,b) => (!!a[1].hidden - !!b[1].hidden));
   if(entries.length === 0) {
     document.getElementById('studentsListContainer').innerHTML = '<div class="empty">No students added yet</div>';
     return;
@@ -2185,7 +2204,10 @@ function renderStudentsList() {
     const chips = approved.length
       ? approved.map(id => '<span class="pill pending" style="margin:2px">'+homeworkSets[id].title+'</span>').join(' ')
       : '<span style="color:var(--muted)">— none —</span>';
-    html += '<tr><td><strong>'+code+'</strong></td><td>'+(s.name||'')+'</td><td>'+chips+'</td><td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="openApprovedPapersModal(\''+code+'\')">📌 Papers</button> <button class="btn btn-primary" style="padding:6px 10px;font-size:11px" onclick="openStudentDetail(\''+code+'\')">📋 Details</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Opens the student portal already logged in as them — same login, no typing needed" onclick="enterAsStudent(\''+code+'\')">▶️ Enter Account</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Opens the parent portal already logged in — same code+password as the student" onclick="enterAsParent(\''+code+'\')">👪 Enter as Parent</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Change this student\'s name or password (not their approved papers — use 📌 Papers for that)" onclick="editStudent(\''+code+'\')">✏️ Edit Login</button> <button class="btn btn-danger" style="padding:6px 10px;font-size:11px" onclick="deleteStudent(\''+code+'\')">Delete</button></td></tr>';
+    const hideBtn = s.hidden
+      ? '<button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Show this student in the list again" onclick="setStudentHidden(\''+code+'\',false)">👁 Unhide</button> '
+      : '<button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Student no longer active — hide from this list (nothing is deleted)" onclick="setStudentHidden(\''+code+'\',true)">🙈 Hide</button> ';
+    html += '<tr'+(s.hidden?' style="opacity:.5"':'')+'><td><strong>'+code+'</strong></td><td>'+(s.name||'')+(s.hidden?' <span class="pill pending" style="font-size:10px">hidden</span>':'')+'</td><td>'+chips+'</td><td style="text-align:right;white-space:nowrap">'+hideBtn+'<button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" onclick="openApprovedPapersModal(\''+code+'\')">📌 Papers</button> <button class="btn btn-primary" style="padding:6px 10px;font-size:11px" onclick="openStudentDetail(\''+code+'\')">📋 Details</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Opens the student portal already logged in as them — same login, no typing needed" onclick="enterAsStudent(\''+code+'\')">▶️ Enter Account</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Opens the parent portal already logged in — same code+password as the student" onclick="enterAsParent(\''+code+'\')">👪 Enter as Parent</button> <button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Change this student\'s name or password (not their approved papers — use 📌 Papers for that)" onclick="editStudent(\''+code+'\')">✏️ Edit Login</button> <button class="btn btn-danger" style="padding:6px 10px;font-size:11px" onclick="deleteStudent(\''+code+'\')">Delete</button></td></tr>';
   });
   html += '</tbody></table>';
   document.getElementById('studentsListContainer').innerHTML = html;
@@ -2259,7 +2281,7 @@ function closeApprovedPapersModal() {
 }
 
 function renderBulkChecklist() {
-  const entries = Object.entries(students).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
+  const entries = Object.entries(students).filter(([c,s]) => !s.hidden).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
   const container = document.getElementById('bulkStudentChecklist');
   if(entries.length === 0) {
     container.innerHTML = '<p style="color:var(--muted);font-size:12px">Add some students first.</p>';
