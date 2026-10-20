@@ -2186,6 +2186,12 @@ async function setStudentHidden(code, hidden) {
   } catch(e) { alert('Could not save: ' + e); }
 }
 
+function toggleMoreChips(btn, code) {
+  const box = document.getElementById('moreChips_' + code);
+  const nowHidden = box.classList.toggle('hidden');
+  btn.textContent = nowHidden ? '+' + btn.dataset.more + ' more' : 'Show less';
+}
+
 function renderStudentsList() {
   const all = Object.entries(students).sort((a,b) => (a[1].name||'').localeCompare(b[1].name||''));
   const nHidden = all.filter(([c,s]) => s.hidden).length;
@@ -2201,9 +2207,16 @@ function renderStudentsList() {
   let html = '<table><thead><tr><th>Code</th><th>Name</th><th>Approved Papers</th><th></th></tr></thead><tbody>';
   entries.forEach(([code, s]) => {
     const approved = Object.keys(s.approvedSetIds || {}).filter(id => s.approvedSetIds[id] && homeworkSets[id]);
-    const chips = approved.length
-      ? approved.map(id => '<span class="pill pending" style="margin:2px">'+homeworkSets[id].title+'</span>').join(' ')
-      : '<span style="color:var(--muted)">— none —</span>';
+    // Newest 3 papers only (by creation time); the rest behind a "+N more" toggle.
+    approved.sort((a,b) => (homeworkSets[b].createdAt||0) - (homeworkSets[a].createdAt||0) || compareSetTitles(homeworkSets[b], homeworkSets[a]));
+    const chip = id => '<span class="pill pending" style="margin:2px">'+escapeHtml(homeworkSets[id].title)+'</span>';
+    const SHOW = 3;
+    const chips = !approved.length ? '<span style="color:var(--muted)">— none —</span>'
+      : approved.slice(0, SHOW).map(chip).join(' ')
+        + (approved.length > SHOW
+            ? ' <span class="hidden" id="moreChips_'+code+'">' + approved.slice(SHOW).map(chip).join(' ') + '</span>'
+              + ' <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px" data-more="'+(approved.length-SHOW)+'" onclick="toggleMoreChips(this,\''+code+'\')">+'+(approved.length-SHOW)+' more</button>'
+            : '');
     const hideBtn = s.hidden
       ? '<button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Show this student in the list again" onclick="setStudentHidden(\''+code+'\',false)">👁 Unhide</button> '
       : '<button class="btn btn-ghost" style="padding:6px 10px;font-size:11px" title="Student no longer active — hide from this list (nothing is deleted)" onclick="setStudentHidden(\''+code+'\',true)">🙈 Hide</button> ';
