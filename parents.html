@@ -326,7 +326,7 @@ async function enterParentHome() {
   document.getElementById('homeCard').classList.remove('hidden');
   const {ref,get,db} = window.firebaseDB;
   const setsSnap = await get(ref(db,'homeworkSets'));
-  homeworkSets = normalizeLQFields(setsSnap.val() || {});
+  homeworkSets = withoutTutorialSets(normalizeLQFields(setsSnap.val() || {}));
   await renderParentPaperList();
 }
 

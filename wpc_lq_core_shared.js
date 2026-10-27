@@ -24,6 +24,15 @@ function isLQPaperType(t) { return t === 'lq_16plus' || t === 'wpc_physics' || t
 // No timer, no typed answers; Dr Jon marks by hand and the marks/report are
 // written straight into submissions/{setId}/{code} (no student-created
 // submission, so timedAnswers/timedSubmittedAt may be absent).
+// Dr Jon (2026-10-27): no free trial / tutorial paper any more — "when they
+// do the paper, they do the real thing". Old isTutorial sets stay in the DB
+// (past submissions reference them) but are dropped from every page.
+function withoutTutorialSets(sets) {
+  const out = {};
+  Object.keys(sets || {}).forEach(id => { if(!(sets[id] && sets[id].isTutorial)) out[id] = sets[id]; });
+  return out;
+}
+
 function isPaperOnlySet(s) { return !!s && s.deliveryMode === 'paper_only'; }
 
 // [sketch] leaves need a human to judge them exactly like [manual] does

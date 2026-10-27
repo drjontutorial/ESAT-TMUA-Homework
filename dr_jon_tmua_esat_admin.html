@@ -442,7 +442,7 @@ function loadData() {
   if(!window.firebaseDB) { setTimeout(loadData,100); return; }
   const {ref,onValue,db} = window.firebaseDB;
   onValue(ref(db,'homeworkSets'), snap => {
-    homeworkSets = normalizeLQFields(snap.val() || {});
+    homeworkSets = withoutTutorialSets(normalizeLQFields(snap.val() || {}));
     renderSetsList();
     populateResultsSetSelect();
     populateSetDropdowns();
@@ -570,6 +570,7 @@ async function renderHomepage() {
     const needsReview = [];
     Object.entries(allSubsTree).forEach(([setId, subsForSet]) => {
       const set = homeworkSets[setId];
+      if(!set) return; // hidden (old free-trial) or deleted paper — keep it off the homepage
       Object.entries(subsForSet || {}).forEach(([code, sub]) => {
         // Paper-only (scan-based) papers: no timedSubmittedAt — the student's
         // timer start and "I've sent my scan" press are the only signals.

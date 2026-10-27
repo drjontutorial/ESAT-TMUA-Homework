@@ -314,16 +314,6 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
 <!-- WARNING / START SCREEN -->
 <div class="hidden" id="warningScreen">
   <span class="back-link" onclick="backToMyPaper()">‹ Back</span>
-  <div class="warning-box hidden" id="tutorialIntroBox" style="background:#fef2f2;border:3px solid #dc2626;color:#7f1d1d">
-    <h3 style="color:#b91c1c;font-size:22px;line-height:1.3;margin-bottom:8px">⚠️ This is NOT your homework</h3>
-    <p style="font-size:16px;font-weight:700;margin:0 0 10px">It is a 3-question <u>FREE TRIAL</u> that only shows you how this portal works (starting the timer, typing answers, submitting).</p>
-    <p id="tutorialRealPapers" style="font-size:15px;margin:0 0 10px"></p>
-    <p style="font-size:14px;margin:0 0 14px">Do <strong>not</strong> send this trial to Dr Jon as homework.</p>
-    <label style="display:flex;align-items:center;gap:10px;background:#fff;border:2px solid #dc2626;border-radius:10px;padding:12px;font-size:15px;font-weight:800;cursor:pointer;color:#7f1d1d">
-      <input type="checkbox" id="tutorialAck" onchange="updateTrialStartLock()" style="width:22px;height:22px;flex-shrink:0">
-      I understand: this is a free trial, not my homework.
-    </label>
-  </div>
   <div class="warning-box" id="normalWarningBox">
     <h3>⚠️ Before you press Start</h3>
     <ul>
@@ -456,7 +446,6 @@ header p{font-size:11px;color:var(--muted);margin-top:2px;font-weight:600;letter
   <div id="breakdownContainer"></div>
   <a class="btn hidden" id="markSchemeBtn" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">📥 Download Mark Scheme</a>
   <button class="btn secondary hidden" id="continueOvertimeBtn" onclick="goToOvertime()" style="margin-top:10px">Continue to overtime attempt</button>
-  <button class="btn green hidden" style="margin-top:10px" id="tutorialDoneBtn" onclick="finishTutorial()">🎉 Continue to my papers</button>
   <button class="btn green" style="margin-top:10px" id="reattemptBtn" onclick="beginReattempt()">🔄 Reattempt for Practice</button>
   <p class="sub" style="text-align:center;margin-top:8px">Practice only — untimed, doesn't change your saved timed/overtime score.</p>
 </div>
@@ -527,35 +516,8 @@ async function loginStudent() {
   }
 }
 
-// Start stays disabled on the free trial until the student ticks
-// "I understand this is not my homework" (a student once did the trial
-// on paper and handed it in as her real homework).
-function updateTrialStartLock() {
-  const btn = document.getElementById('startTimedBtn');
-  const locked = !!(currentSet && currentSet.isTutorial) && !document.getElementById('tutorialAck').checked;
-  btn.disabled = locked;
-  btn.style.opacity = locked ? '.45' : '';
-  btn.style.cursor = locked ? 'not-allowed' : '';
-}
-
 async function enterStudentHome() {
   document.getElementById('welcomeName').textContent = 'Welcome, ' + (studentRecord.name || studentCode);
-
-  // First-login tutorial gate: like a game tutorial level, a student who
-  // hasn't completed the designated tutorial paper yet gets sent straight
-  // into it — real assigned papers stay hidden until they've submitted and
-  // viewed it once (flag is set inside showResults()).
-  if(!studentRecord.onboardingComplete) {
-    const {ref,get,db} = window.firebaseDB;
-    const snap = await get(ref(db,'homeworkSets'));
-    homeworkSets = normalizeLQFields(snap.val() || {});
-    const tutorialId = Object.keys(homeworkSets).find(id => homeworkSets[id].isTutorial);
-    if(tutorialId) {
-      document.getElementById('studentHomeCard').classList.remove('hidden');
-      openSet(tutorialId);
-      return;
-    }
-  }
 
   document.getElementById('studentHomeCard').classList.remove('hidden');
   switchHomeTab('papers');
@@ -574,7 +536,7 @@ function loadHomeworkSetsThenShowPaper() {
   if(!window.firebaseDB) { setTimeout(loadHomeworkSetsThenShowPaper,100); return; }
   const {ref,onValue,db} = window.firebaseDB;
   onValue(ref(db,'homeworkSets'), snap => {
-    homeworkSets = normalizeLQFields(snap.val() || {});
+    homeworkSets = withoutTutorialSets(normalizeLQFields(snap.val() || {}));
     renderMyPaperCard();
   });
 }
@@ -618,22 +580,6 @@ function paperGroupLabel(set) {
 async function renderMyPaperCard() {
   const myToken = ++paperCardRenderToken;
   const container = document.getElementById('myPaperContent');
-  // Onboarding not finished: never list real papers here (pressing Back on
-  // the trial used to reveal them, then the next login sent the student
-  // back into the trial — they thought the trial WAS that paper).
-  const trialId = studentRecord && !studentRecord.onboardingComplete
-    ? Object.keys(homeworkSets).find(id => homeworkSets[id].isTutorial) : null;
-  if(trialId) {
-    const locked = myApprovedSetIds().filter(id => !homeworkSets[id].isTutorial).map(id => homeworkSets[id].title);
-    container.innerHTML = '<div class="psection-title">🎓 Do this first</div>'
-      + '<div class="pcard tone-urgent" onclick="openSet(\'' + trialId + '\')"><div class="pcard-main">'
-      + '<div class="pcard-subject">Free trial — not homework</div>'
-      + '<div class="pcard-title">FREE TRIAL (3 questions)</div>'
-      + '<div class="pcard-status">Shows you how the portal works. Not your homework.</div></div>'
-      + '<div class="pcard-action">Start ›</div></div>'
-      + (locked.length ? '<div class="pempty" style="text-align:left">🔒 Unlocks after the trial: <strong>' + locked.map(escapeHtml).join('</strong>, <strong>') + '</strong></div>' : '');
-    return;
-  }
   const setIds = myApprovedSetIds();
   if(setIds.length === 0) {
     container.innerHTML = '<p style="color:var(--muted);font-size:14px;padding:10px 0">No papers have been approved for you yet — please check with Dr Jon.</p>';
@@ -942,20 +888,9 @@ async function openSet(setId) {
 
   if(!sub || !sub.startedAt) {
     // brand new — show warning screen
-    document.getElementById('startTitle').textContent = currentSet.isTutorial
-      ? '🎓 FREE TRIAL — not your homework' : currentSet.title;
-    if(currentSet.isTutorial) {
-      const realTitles = myApprovedSetIds().filter(id => !homeworkSets[id].isTutorial).map(id => homeworkSets[id].title);
-      document.getElementById('tutorialRealPapers').innerHTML = realTitles.length
-        ? 'Your real homework (<strong>' + realTitles.map(escapeHtml).join('</strong>, <strong>') + '</strong>) will appear in <strong>My Papers</strong> straight after you finish this trial.'
-        : 'Your real homework will appear in <strong>My Papers</strong> straight after you finish this trial.';
-      document.getElementById('tutorialAck').checked = false;
-    }
-    updateTrialStartLock();
+    document.getElementById('startTitle').textContent = currentSet.title;
     const optionsPart = currentSet.optionsCount ? (' • Options A–' + optionLetter(currentSet.optionsCount)) : '';
     document.getElementById('startMeta').textContent = currentSet.totalQuestions + ' questions • ' + currentSet.timeLimitMinutes + ' minute time limit' + optionsPart;
-    document.getElementById('tutorialIntroBox').classList.toggle('hidden', !currentSet.isTutorial);
-    document.getElementById('normalWarningBox').classList.toggle('hidden', !!currentSet.isTutorial);
     // Auto-marked papers with a mark scheme show it straight after submitting
     // (WPC/LQ papers wait for Dr Jon to release), so tell the student up front.
     const msNote = document.getElementById('startMsNote');
@@ -1898,22 +1833,9 @@ function showResults(sub, showOvertimeToo) {
   msBtn.classList.toggle('hidden', !showMs);
   if(showMs) msBtn.href = msUrl;
   document.getElementById('reattemptBtn').classList.toggle('hidden', !!liveSet.isTutorial || isPaperOnlySet(liveSet));
-  document.getElementById('tutorialDoneBtn').classList.toggle('hidden', !liveSet.isTutorial);
   document.getElementById('resultsScreen').classList.remove('hidden');
 
-  // Viewing this results screen IS "completing the tutorial" — unlock real
-  // papers now rather than waiting for a further click, per the spec: submit
-  // + view answer = done. Only fires once per student.
-  if(liveSet.isTutorial && sub.timedSubmittedAt && !studentRecord.onboardingComplete) {
-    studentRecord.onboardingComplete = true;
-    const {ref,update,db} = window.firebaseDB;
-    update(ref(db,'students/'+studentCode), { onboardingComplete: true }).catch(() => {});
-  }
-}
 
-// "Continue to my papers" — only shown on the tutorial's results screen.
-function finishTutorial() {
-  backToMyPaper();
 }
 
 function buildBreakdown(answers, set, manualMarks, selfCheckOnly) {
