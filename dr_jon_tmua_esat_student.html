@@ -615,23 +615,11 @@ async function renderMyPaperCard() {
       + '</div>';
   };
 
-  // Front page shows only the most recent paper per subject in each
-  // section (a TMUA/ESAT student can have 20+ papers); the rest sit behind
-  // one "Show all" button per section.
+  // Every paper is always listed — Dr Jon (30 Oct): a collapsed list
+  // ("Show all 2 papers") made a student think she had only one paper.
   const section = (key, title, list, emptyHtml) => {
     if(!list.length) return emptyHtml || '';
-    const seen = new Set(), front = [], rest = [];
-    list.forEach(x => {
-      const g = paperTypeOf(x.set);
-      // In-progress papers (timer running) are always shown up front.
-      if(!seen.has(g) || x.info.tone === 'urgent') { seen.add(g); front.push(x); } else rest.push(x);
-    });
-    let out = '<div class="psection-title">' + title + ' <span class="psection-count">' + list.length + '</span></div>' + front.map(card).join('');
-    if(rest.length) {
-      out += '<div id="more_' + key + '" class="hidden">' + rest.map(card).join('') + '</div>'
-        + '<button class="pshow-more" onclick="document.getElementById(\'more_' + key + '\').classList.remove(\'hidden\');this.remove()">Show all ' + list.length + ' papers</button>';
-    }
-    return out;
+    return '<div class="psection-title">' + title + ' <span class="psection-count">' + list.length + '</span></div>' + list.map(card).join('');
   };
   const newest = (a,b) => ((b.set.createdAt||0) - (a.set.createdAt||0)) || compareSetTitles(b.set, a.set);
   todo.sort((a,b) => (a.info.rank - b.info.rank) || newest(a,b));
